@@ -33,7 +33,7 @@ This project implements a **multi-agent document processing pipeline** using Lan
 - **Multi-Provider LLM**: Groq, Ollama, AWS Bedrock with fallback mechanisms
 - **Intelligent Extraction**: Field extraction with 100% accuracy
 - **PII Redaction**: 95%+ recall, 100% precision for privacy compliance
-- **Self-Repair**: Automatic validation error correction (max 2 attempts)
+
 - **Comprehensive Metrics**: Extraction accuracy, PII metrics, performance tracking
 
 ## ✨ Features
@@ -67,12 +67,9 @@ graph TD
     C -->|ID Card| E[ID Card Extractor]
     D --> F[Validator Agent]
     E --> F
-    F --> G{Valid?}
-    G -->|No| H[Repair Agent]
-    H --> F
-    G -->|Yes| I[Redactor Agent]
-    I --> J[Reporter Agent]
-    J --> K[Results + Metrics]
+    F --> G[Redactor Agent]
+    G --> H[Reporter Agent]
+    H --> I[Results + Metrics]
 ```
 
 ### Agent Workflow
@@ -261,7 +258,6 @@ ragagent/
 │   │   ├── classifier.py
 │   │   ├── extractor.py
 │   │   ├── validator.py
-│   │   ├── repair.py
 │   │   ├── redactor.py
 │   │   └── reporter.py
 │   ├── graph.py          # LangGraph workflow definition

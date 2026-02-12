@@ -1,0 +1,35 @@
+# Core graph & LLM tooling
+langgraph
+langchain
+langchain-community
+langchain-core
+langchain-text-splitters
+langchain-aws
+langchain-groq
+langchain-ollama
+# AWS + data + utilities
+boto3
+pandas
+tenacity
+regex
+python-dotenv
+# Vector search
+faiss-cpu
+
+# API server
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Testing
+pytest
+pypdf
+# OCR (Python wrapper) – requires system tesseract installed
+pytesseract
+
+# Frontend
+streamlit
+requests
+flowise
+# If you truly need it (not required for OCR):
+# tesseract

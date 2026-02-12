@@ -1,0 +1,16 @@
+# Streamlit Configuration
+[theme]
+primaryColor = "#4a9eff"
+backgroundColor = "#1a1a1a"
+secondaryBackgroundColor = "#2d2d2d"
+textColor = "#e0e0e0"
+font = "sans serif"
+
+[server]
+port = 8501
+headless = true
+enableCORS = false
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false

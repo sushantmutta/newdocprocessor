@@ -1,0 +1,21 @@
+Rx:
+Amoxicillin 500mg
+Take 1 tablet by mouth twice daily for 7 days.
+City Health Clinic
+Dr. Gregory House
+License: MH-55555
+Office: (555) 0199
+
+Patient ID: PT98765
+Patient: Timmy Smith
+Age: 10
+Gender: Male
+Weight: [MISSING]
+
+Rx:
+Morphine Sulfate 500mg
+Take 1 caps twice daily for 7 days
+Refills: 0
+
+Diagnosis: Severe Chronic Pain
+Date: Oct 12, 2024

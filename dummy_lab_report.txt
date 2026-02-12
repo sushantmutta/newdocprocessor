@@ -1,0 +1,15 @@
+⚠ AMENDED REPORT ⚠
+City Diagnostic Labs
+Report ID: LAB123456
+Patient ID: PT98765
+Patient: Jane Doe
+Collection Date: 12th Oct 2024
+Report Date: Oct 13, 2024
+
+HEMATOLOGY REPORT (REVISED)
+--------------------------
+Test Name       Result   Unit     Reference Range   Status
+Hemoglobin      8.5      g/dL     12.0 - 16.0       LOW
+WBC Count       25.0     k/cumm   4.0 - 11.0        CRITICAL
+Platelets       50       k/cumm   150 - 450         CRITICAL
+Potassium       6.8      mmol/L   3.5 - 5.1         EXTREME

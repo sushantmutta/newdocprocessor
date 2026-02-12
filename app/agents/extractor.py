@@ -5,83 +5,76 @@ from app.state import DocState
 
 # Enhanced specialized prompts for different document types
 PROMPTS = {
-    "invoice": """You are a specialized invoice data extraction system.
+    "prescription": """You are a specialized medical prescription extraction system.
 
-TASK: Extract structured data from the invoice text with 100% accuracy.
-
-REQUIRED FIELDS:
-1. invoice_number (string): The unique invoice identifier
-   - Look for: "Invoice #", "Invoice No", "Bill #", "Reference", "Inv No"
-   - Format: Preserve exactly as written (e.g., "INV-2024-001")
-   
-2. vendor_name (string): The company/person issuing the invoice
-   - Look for: "From:", "Vendor:", "Seller:", company name at top of document
-   - Format: Full legal name, clean extra whitespace
-   
-3. total_amount (float): The final amount to be paid
-   - Look for: "Total", "Amount Due", "Grand Total", "Balance", "Total Amount"
-   - Format: Convert to standard float (e.g., "8.028,26" → 8028.26, "1,234.56" → 1234.56)
-   - Handle: Remove €, $, £, USD, EUR symbols
-   
-4. date (string): Invoice issue date
-   - Look for: "Date:", "Invoice Date:", "Issued:", "Date of Issue"
-   - Format: YYYY-MM-DD (convert from any format)
-   - Examples: "15.01.2024" → "2024-01-15", "Jan 15, 2024" → "2024-01-15"
-
-EXTRACTION RULES:
-- If a field is not found, use null (not empty string)
-- For amounts: Remove currency symbols, convert European format (comma decimal) to standard (dot decimal)
-- For dates: Always convert to ISO format (YYYY-MM-DD)
-- Preserve case and spacing in text fields, but clean extra whitespace
-
-OUTPUT FORMAT: Return ONLY a raw JSON object (no markdown, no ```json tags, no explanations)
-
-EXAMPLE OUTPUT:
-{
-  "invoice_number": "INV-2024-001",
-  "vendor_name": "Acme Corporation",
-  "total_amount": 8028.26,
-  "date": "2024-01-15"
-}""",
-    
-    "id_card": """You are a specialized ID card data extraction system.
-
-TASK: Extract personal information from the ID card with perfect accuracy.
+TASK: Extract structured data from the prescription with 100% accuracy.
 
 REQUIRED FIELDS:
-1. full_name (string): Complete name of the cardholder
-   - Look for: "Name:", "Cardholder:", "Employee Name:", name near photo area
-   - Format: "FirstName LastName" (clean extra spaces, preserve capitalization)
-   
-2. id_number (string): Unique identifier on the card
-   - Look for: "ID:", "Employee ID:", "Card Number:", "Badge #", "ID No"
-   - Format: Preserve exactly as written (alphanumeric, may include dashes/spaces)
-   
-3. date_of_birth (string): Cardholder's birth date
-   - Look for: "DOB:", "Date of Birth:", "Born:", "Birth Date"
-   - Format: YYYY-MM-DD (convert from any format)
-   - Examples: "01/15/1990" → "1990-01-15", "15.01.1990" → "1990-01-15"
-   
-4. expiry_date (string): Card expiration date
-   - Look for: "Expiry:", "Valid Until:", "Expires:", "Expiration Date"
-   - Format: YYYY-MM-DD (convert from any format)
+1. date (string): Date of prescription (any format).
+
+2. doctor (object):
+   - name: doctor's full name (e.g., "Dr. Gregory House")
+   - license_number: Medical license (Format: StateCode-Digits e.g., "MH-12345")
+   - dea_number: DEA Registration Number if present (Format: 2 letters + 7 digits, e.g., "AB1234567")
+   - specialization: doctor's medical specialty
+
+3. patient (object):
+   - name: patient's full name
+   - id: patient ID (Format: PT#####, e.g., "PT12345")
+   - age: integer age
+   - weight: float weight in kg (CRITICAL for pediatric dosing)
+   - gender: patient's gender (Male/Female)
+
+4. diagnosis (string): Medical indication or diagnosis if stated.
+
+5. medications (list of objects):
+   - name: generic or brand name
+   - dosage: strength with unit (MUST be standard units: mg, ml, g, mcg, iu, tablet). Reject "liters" or invalid units.
+   - frequency: how often (e.g., "BID", "twice daily")
+   - duration: how long (e.g., "7 days")
+   - refills: number of refills allowed
 
 EXTRACTION RULES:
-- Clean all extra whitespace from names and IDs
-- Convert all dates to ISO format (YYYY-MM-DD)
-- If a field is missing or not found, use null
-- Preserve uppercase/lowercase in IDs exactly as shown on card
-- For names: Keep proper capitalization (e.g., "John Doe" not "JOHN DOE")
+- Use null if a field is not found.
+- DEA number is MANDATORY for controlled substances (Morphine, etc).
+- Weight is MANDATORY for patients under 12.
 
-OUTPUT FORMAT: Return ONLY a raw JSON object (no markdown, no explanations)
+OUTPUT FORMAT: Return ONLY a raw JSON object.""",
 
-EXAMPLE OUTPUT:
-{
-  "full_name": "John Doe",
-  "id_number": "EMP56725065",
-  "date_of_birth": "1990-01-15",
-  "expiry_date": "2025-12-31"
-}"""
+    "lab_report": """You are a specialized lab report extraction system.
+
+TASK: Extract structured data from the medical lab report with 100% accuracy.
+
+REQUIRED FIELDS:
+1. lab (object):
+   - name: name of the laboratory
+   - address: lab address
+   - accreditation: CLIA or CAP number
+
+2. patient (object):
+   - name: patient's full name
+   - dob: date of birth
+   - mrn: medical record number
+   - patient_id: internal ID
+
+3. report_id: unique report identifier (Format: LAB######, e.g., "LAB123456")
+4. is_amended (boolean): Set to true ONLY if document contains "AMENDED REPORT" or "CORRECTED REPORT".
+5. collection_date: Date sample collected.
+6. report_date: Date report issued.
+
+7. test_results (list of objects):
+   - test_name: name of the analyte
+   - value: numeric or string result
+   - unit: measurement unit (e.g., "g/dL")
+   - reference_range: normal range string (e.g., "12.0 - 16.0")
+   - status: Explicit status from report. MUST be one of: "Normal", "High", "Low", "Critical", "Extreme".
+
+EXTRACTION RULES:
+- If status is not explicit, derive it from reference range.
+- Mark status as "Critical" or "Extreme" if the report creates urgency (often red text or ALL CAPS).
+- Normalize dates where possible, but return original string if ambiguous.
+
+OUTPUT FORMAT: Return ONLY a raw JSON object."""
 }
 
 

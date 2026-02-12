@@ -7,6 +7,7 @@ class DocState(TypedDict):
     doc_type: Optional[str]
     extracted_data: Optional[dict]
     validated_data: Optional[dict]
+    validation_flags: List[dict]  # Critical validation alerts
     redacted_text: Optional[str]
     errors: List[str]
     trace_log: List[dict]

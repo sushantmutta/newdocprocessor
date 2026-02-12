@@ -243,20 +243,20 @@ with st.sidebar:
     # Info
     st.markdown("### 📊 Supported Documents")
     st.markdown("""
-    - **Invoices** 📋
-    - **ID Cards** 🪪
-    - **Other Documents** 📄
+    - **Prescriptions** 💊
+    - **Lab Reports** 🧪
+    - **Other Medical Docs** 📄
     """)
     
     st.markdown("---")
     
     st.markdown("### 🤖 Features")
     st.markdown("""
-    - Document Classification
-    - Data Extraction
-    - Schema Validation
-    - Auto-Repair
-    - PII Redaction
+    - **Medical Classification** (Rx vs Lab)
+    - **Clinical Data Extraction**
+    - **Validation & Alerts** (Critical Values, Drug Interactions)
+    - **HIPAA-Compliant Redaction**
+    - **Responsible AI Logging**
     """)
     
     st.markdown("---")
@@ -267,9 +267,9 @@ with st.sidebar:
 
 # Main Content
 uploaded_file = st.file_uploader(
-    "Upload a PDF document",
+    "Upload a Medical Document (PDF)",
     type=['pdf'],
-    help="Upload an invoice, ID card, or other document for processing"
+    help="Upload a Prescription, Lab Report, or other medical record"
 )
 
 if uploaded_file is not None:
@@ -324,16 +324,24 @@ if uploaded_file is not None:
                     
                     with metric_col3:
                         errors = result.get('errors', [])
-                        st.metric(
-                            "Status",
-                            "✅ Success" if not errors else "⚠️ Warnings"
-                        )
+                        validation_flags = result.get('validation_flags', [])
+                        
+                        status = "✅ Success"
+                        if errors:
+                            status = "❌ Errors"
+                        elif fn := [f for f in validation_flags if f.get('severity') == 'CRITICAL']:
+                            status = "🚨 Critical Alerts"
+                        elif validation_flags:
+                            status = "⚠️ Warnings"
+                            
+                        st.metric("Status", status)
                     
                     st.markdown("---")
                     
                     # Tabs for different views
-                    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+                    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
                         "📋 Extracted Data",
+                        "⚠️ Validation Alerts",
                         "🔒 Redacted Text",
                         "📊 Reporter Metrics",
                         "🔍 Agent Trace",
@@ -341,21 +349,79 @@ if uploaded_file is not None:
                     ])
                     
                     with tab1:
-                        st.markdown("### Validated Data")
+                        st.markdown("### Validated Clinical Data")
                         validated_data = result.get('validated_data', {})
+                        doc_type = result.get('doc_type', 'unknown')
                         
                         if validated_data:
-                            # Display as formatted key-value pairs
-                            for key, value in validated_data.items():
-                                col_a, col_b = st.columns([1, 2])
-                                with col_a:
-                                    st.markdown(f"**{key.replace('_', ' ').title()}:**")
-                                with col_b:
-                                    st.markdown(f"`{value}`")
+                            if doc_type == 'prescription':
+                                # Doctor Info
+                                doc = validated_data.get('doctor', {})
+                                st.markdown(f"#### 👨‍⚕️ Prescriber: {doc.get('name', 'N/A')}")
+                                st.write(f"**License:** {doc.get('license_number', 'N/A')} | **DEA:** {doc.get('dea_number', 'N/A')}")
+                                
+                                # Patient Info
+                                pat = validated_data.get('patient', {})
+                                st.markdown(f"#### 👤 Patient: {pat.get('name', 'N/A')}")
+                                st.write(f"**Age:** {pat.get('age', 'N/A')} | **Weight:** {pat.get('weight', 'N/A')} kg | **Gender:** {pat.get('gender', 'N/A')}")
+                                
+                                # Medications Table
+                                meds = validated_data.get('medications', [])
+                                if meds:
+                                    st.markdown("#### 💊 Medications")
+                                    import pandas as pd
+                                    med_df = pd.DataFrame(meds)
+                                    # Rename columns for display
+                                    med_df.columns = [c.replace('_', ' ').title() for c in med_df.columns]
+                                    st.dataframe(med_df, use_container_width=True)
+                                
+                                st.markdown(f"**Diagnosis:** {validated_data.get('diagnosis', 'N/A')}")
+                                st.markdown(f"**Date:** {validated_data.get('date', 'N/A')}")
+
+                            elif doc_type == 'lab_report':
+                                # Lab Info
+                                lab = validated_data.get('lab', {})
+                                st.markdown(f"#### 🧪 Lab: {lab.get('name', 'N/A')}")
+                                st.write(f"**Report ID:** {validated_data.get('report_id', 'N/A')} | **Collection:** {validated_data.get('collection_date', 'N/A')} | **Report:** {validated_data.get('report_date', 'N/A')}")
+                                if validated_data.get('is_amended'):
+                                    st.warning("⚠ This is an AMENDED report.")
+
+                                # Patient Info
+                                st.write(f"**Patient ID:** {validated_data.get('patient_id', 'N/A')}")
+
+                                # Results Table
+                                results = validated_data.get('test_results', [])
+                                if results:
+                                    st.markdown("#### 📋 Test Results")
+                                    import pandas as pd
+                                    res_df = pd.DataFrame(results)
+                                    # Format columns
+                                    res_df.columns = [c.replace('_', ' ').title() for c in res_df.columns]
+                                    st.dataframe(res_df, use_container_width=True)
+                            
+                            else:
+                                # Fallback for other types
+                                st.json(validated_data)
                         else:
                             st.info("No structured data extracted")
-                    
+
                     with tab2:
+                        st.markdown("### ⚠️ Clinical Validation Alerts")
+                        flags = result.get('validation_flags', [])
+                        if flags:
+                            for flag in flags:
+                                severity = flag.get('severity', 'LOW')
+                                msg = f"**[{severity}]** {flag.get('message')}"
+                                if severity == 'CRITICAL':
+                                    st.error(msg, icon="🚨")
+                                elif severity in ['HIGH', 'MEDIUM']:
+                                    st.warning(msg, icon="⚠️")
+                                else:
+                                    st.info(msg, icon="ℹ️")
+                        else:
+                            st.success("✅ No clinical alerts found.")
+                    
+                    with tab3:
                         st.markdown("### PII-Redacted Text")
                         redacted_text = result.get('redacted_text', '')
                         
@@ -369,10 +435,14 @@ if uploaded_file is not None:
                         else:
                             st.info("No redacted text available")
                     
-                    with tab3:
+                    with tab4:
                         st.markdown("### 📊 Reporter Metrics")
                         
-                        # Extract reporter data from trace
+                        # Extract reporter data from trace (or direct if available)
+                        # ... (existing reporter logic)
+                        metrics_file = result.get('metrics_file') # If API returns it
+                        
+                        # Using trace to find reporter output
                         reporter_data = None
                         for step in result.get('trace', []):
                             if step.get('agent') == 'reporter':
@@ -380,7 +450,7 @@ if uploaded_file is not None:
                                 break
                         
                         if reporter_data:
-                            # Extraction Metrics
+                             # Extraction Metrics
                             st.markdown("#### 📋 Extraction Metrics")
                             col1, col2, col3 = st.columns(3)
                             
@@ -403,12 +473,20 @@ if uploaded_file is not None:
                                     "✅ Success" if pipeline_success else "❌ Failed"
                                 )
                             
+                            if not pipeline_success:
+                                st.error("#### ⚠️ Pipeline Errors")
+                                pipeline_errors = result.get('errors', [])
+                                if pipeline_errors:
+                                    for err in pipeline_errors:
+                                        st.write(f"- {err}")
+                                else:
+                                    st.write("No specific error messages found in trace, but success criteria not met.")
+                            
                             st.markdown("---")
+                            st.markdown("#### 🔒 PII Redaction")
+                            # ... (existing PII logic)
                             
-                            # Additional metrics from trace
                             trace = result.get('trace', [])
-                            
-                            # Count PII types redacted
                             pii_info = None
                             for step in trace:
                                 if step.get('agent') == 'redactor':
@@ -416,24 +494,15 @@ if uploaded_file is not None:
                                     break
                             
                             if pii_info:
-                                st.markdown("#### 🔒 PII Redaction")
                                 pii_types = pii_info.get('pii_types_scrubbed', [])
                                 if pii_types:
                                     st.write(f"**PII Types Redacted:** {', '.join(pii_types)}")
                                 else:
-                                    st.info("No PII detected in document")
-                            
-                            # Repair attempts
-                            repair_attempts = result.get('trace', [{}])[-1].get('repair_attempts', 0)
-                            if repair_attempts > 0:
-                                st.markdown("---")
-                                st.markdown("#### 🔧 Repair Metrics")
-                                st.warning(f"⚠️ Document required {repair_attempts} repair attempt(s)")
-                        
+                                    st.info("No PII detected/redacted")
                         else:
-                            st.info("Reporter metrics not available in this response")
+                            st.info("Reporter metrics not available")
                     
-                    with tab4:
+                    with tab5:
                         st.markdown("### Agent Execution Trace")
                         trace = result.get('trace', [])
                         
@@ -445,8 +514,8 @@ if uploaded_file is not None:
                                 agent_emoji = {
                                     'classifier': '🔍',
                                     'extractor': '📝',
-                                    'extractor_invoice': '📝',
-                                    'extractor_id_card': '📝',
+                                    'extractor_prescription': '💊',
+                                    'extractor_lab_report': '🧪',
                                     'validator': '✅',
                                     'redactor': '🔒',
                                     'reporter': '📊'
@@ -457,16 +526,16 @@ if uploaded_file is not None:
                         else:
                             st.info("No trace information available")
                     
-                    with tab5:
+                    with tab6:
                         st.markdown("### Complete API Response")
                         st.json(result)
                     
                     # Errors section
                     if errors:
                         st.markdown("---")
-                        st.markdown("## ⚠️ Warnings/Errors")
+                        st.markdown("## ⚠️ System Errors")
                         for error in errors:
-                            st.warning(error)
+                            st.error(error)
                 
                 else:
                     st.error(f"❌ Error: {response.status_code} - {response.text}")
@@ -483,7 +552,7 @@ if uploaded_file is not None:
 else:
     # Welcome screen
     st.markdown("---")
-    st.info("👆 Upload a PDF document to get started")
+    st.info("👆 Upload a Medical PDF (Prescription or Lab Report) to get started")
     
     st.markdown("## 🎯 How It Works")
     
@@ -492,39 +561,37 @@ else:
     with col1:
         st.markdown("""
         ### 1️⃣ Upload
-        Upload your PDF document (invoice, ID card, etc.)
+        Upload a Prescription or Lab Report (PDF)
         """)
     
     with col2:
         st.markdown("""
         ### 2️⃣ Process
-        AI agents classify, extract, validate, and redact
+        AI Agents Classify, Extract, Validate & Redact
         """)
     
     with col3:
         st.markdown("""
         ### 3️⃣ Results
-        Get structured data and redacted text
+        View Clinical Data, Critical Alerts & Metrics
         """)
     
     st.markdown("---")
     
-    st.markdown("## 🔄 Processing Pipeline")
+    st.markdown("## 🔄 Responsible AI Pipeline")
     st.markdown("""
     ```
     Document Upload
          ↓
-    Classifier Agent → Identifies document type
+    Classifier Agent → Distinguishes Prescription vs Lab Report
          ↓
-    Extractor Agent → Extracts key fields
+    Extractor Agent → Extracts structured clinical data
          ↓
-    Validator Agent → Validates against schema
+    Validator Agent → Checks Safety (Interactons, Dosages, Critical Values)
          ↓
-    Repair Agent → Fixes errors (if needed)
+    Redactor Agent → Masks HIPAA PII (SSN, MRN, Names)
          ↓
-    Redactor Agent → Masks PII
-         ↓
-    Reporter Agent → Generates metrics
+    Reporter Agent → Generates Trace & Compliance Metrics
          ↓
     Final Results
     ```

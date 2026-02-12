@@ -18,6 +18,7 @@ class ProcessResponse(BaseModel):
     latency_ms: float
     trace: List[dict]
     errors: List[str]
+    validation_flags: Optional[List[dict]] = []
 
 
 @api.post("/process", response_model=ProcessResponse)
@@ -75,7 +76,8 @@ async def process_document(
             "redacted_text": final_state.get("redacted_text"),
             "latency_ms": round(latency_ms, 2),
             "trace": final_state.get("trace_log"),
-            "errors": final_state.get("errors")
+            "errors": final_state.get("errors"),
+            "validation_flags": final_state.get("validation_flags", [])
         }
 
     except Exception as e:

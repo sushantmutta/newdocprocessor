@@ -16,65 +16,58 @@ def redact_pii(state: DocState) -> DocState:
     # 1. Regex Layer: High-Precision for Structured Data
     patterns = {
         "EMAIL": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
-        "IBAN": r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b",
+        "SSN": r"\b\d{3}-\d{2}-\d{4}\b",  # Added SSN
         "PHONE": r"\+?1?[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}",
-        "ID_NUMBER": r"\b[A-Z0-9]{6,12}\b",
-        "DATE": r"\b\d{2}[./-]\d{2}[./-]\d{4}\b"
+        "MRN": r"\bMRN\s*[:#-]?\s*[A-Z0-9]+\b",  # Medical Record Number
     }
 
-    # 2. Enhanced LLM Layer: GDPR-Compliant PII Detection
-    system_prompt = f"""You are a GDPR/Privacy Compliance Expert specializing in PII redaction.
+    # 2. Enhanced LLM Layer: HIPAA/GDPR-Compliant PII Detection
+    system_prompt = f"""You are a HIPAA/Privacy Compliance Expert specializing in Medical PII redaction.
 
-TASK: Identify and redact ALL personally identifiable information (PII) from the {doc_type}.
+TASK: Identify and redact ALL protected health information (PHI/PII) from the {doc_type}.
 
 DOCUMENT CONTEXT: {doc_type}
-SENSITIVITY LEVEL: High (assume all PII must be protected)
+SENSITIVITY LEVEL: High (Medical Records)
 
 PII CATEGORIES TO REDACT:
 
 1. PERSONAL NAMES:
-   - Full names, first names, last names
-   - Nicknames, aliases, maiden names
+   - Patient names, relative names, doctor names (in non-prescriber context)
+   - Nicknames, aliases
    - Replace with: [NAME_REDACTED]
 
 2. CONTACT INFORMATION:
-   - Physical addresses (street, city, postal code, country)
-   - Email addresses (already handled by regex, but double-check)
-   - Phone numbers (already handled by regex, but double-check)
-   - Replace addresses with: [ADDRESS_REDACTED]
+   - Physical addresses (home, work)
+   - Email addresses
+   - Phone numbers
+   - Replace with: [ADDRESS_REDACTED], [EMAIL_REDACTED], [PHONE_REDACTED]
 
-3. IDENTIFIERS:
-   - ID numbers, employee IDs, customer IDs
-   - Social security numbers, passport numbers
-   - Account numbers, reference numbers
-   - Replace with: [ID_NUMBER_REDACTED]
+3. IDENTIFIERS (CRITICAL):
+   - SSN (Social Security Numbers) -> [SSN_REDACTED]
+   - MRN (Medical Record Numbers) -> [MRN_REDACTED]
+   - Patient IDs/Member IDs -> [PATIENT_ID_REDACTED]
+   - Prescription Numbers (Rx#) -> [RX_NUM_REDACTED]
+   - Lab Specimen IDs -> [SPECIMEN_ID_REDACTED]
+   - Insurance Policy Numbers -> [INSURANCE_REDACTED]
+   - Passport/Driver License -> [ID_REDACTED]
+   - Account numbers -> [ACCOUNT_REDACTED]
 
-4. SENSITIVE ATTRIBUTES:
-   - Dates of birth (if not already redacted)
-   - Signatures, signature blocks
-   - Replace with: [SIGNATURE_REDACTED] or [DOB_REDACTED]
+4. DATES (HIPAA Rule):
+   - All dates EXCEPT years (e.g., DOB, admission date, discharge date)
+   - Replace with: [DATE_REDACTED]
+
+5. BIOMETRICS & SENSITIVE ATTRIBUTES:
+   - Signatures, signature blocks -> [SIGNATURE_REDACTED]
+   - Dates of birth -> [DOB_REDACTED]
+   - Fingerprints, voice recordings (references)
 
 REDACTION RULES:
 1. Be CONSERVATIVE: When in doubt, redact
 2. Preserve document structure and readability
-3. Keep non-PII information intact:
-   - Invoice numbers, dates (non-birth dates)
-   - Amounts, prices, quantities
-   - Product names, categories
-4. Do NOT redact:
-   - Company names (unless it's a sole proprietorship with person's name)
-   - Generic job titles (e.g., "Manager", "Director")
-   - Document types, headers, labels
-
-QUALITY CHECKS:
-- Ensure NO personal names remain visible
-- Verify addresses are fully masked (not partial)
-- Check for partial redactions (e.g., "John [NAME_REDACTED]" should be "[NAME_REDACTED]")
-- Maintain document flow and context
+3. Maintain original formatting as much as possible
 
 OUTPUT: Return the COMPLETE original text with PII replaced by redaction tags.
-Do NOT summarize, do NOT omit any content, ONLY replace PII with tags.
-Preserve all formatting, line breaks, and structure."""
+Do NOT summarize, do NOT omit any content, ONLY replace PII with tags."""
 
     messages = [
         SystemMessage(content=system_prompt),
@@ -86,18 +79,20 @@ Preserve all formatting, line breaks, and structure."""
     redacted_text = response.content
 
     # 4. Final Regex Scrub (safety net)
-    pii_types_found = []
     for label, pattern in patterns.items():
-        if re.search(pattern, redacted_text):
-            pii_types_found.append(label)
-            redacted_text = re.sub(
-                pattern, f"[{label}_REDACTED]", redacted_text)
+        redacted_text = re.sub(
+            pattern, f"[{label}_REDACTED]", redacted_text)
 
-    # 5. Update State
+    # 5. Dynamic PII Detection for Trace (Scan for tags)
+    # This ensures that even LLM-generated tags appear in the trace
+    all_tags = re.findall(r"\[([A-Z_]+)_REDACTED\]", redacted_text)
+    pii_types_found = sorted(list(set(all_tags)))
+
+    # 6. Update State
     state["redacted_text"] = redacted_text
     state["trace_log"].append({
         "agent": "redactor",
-        "pii_types_scrubbed": pii_types_found + ["NAMES", "ADDRESSES"],
+        "pii_types_scrubbed": pii_types_found,
         "status": "completed",
         "doc_context": doc_type
     })

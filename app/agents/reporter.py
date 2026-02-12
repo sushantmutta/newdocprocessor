@@ -5,8 +5,10 @@ from app.state import DocState
 
 # Expected field counts per document type
 EXPECTED_FIELDS = {
-    "invoice": 4,  # invoice_number, vendor_name, total_amount, date
-    "id_card": 4   # full_name, id_number, date_of_birth, expiry_date
+    "invoice": 4,      # invoice_number, vendor_name, total_amount, date
+    "id_card": 4,      # full_name, id_number, date_of_birth, expiry_date
+    "prescription": 5, # date, doctor, patient, medications, diagnosis
+    "lab_report": 7    # lab, patient_id, report_id, is_amended, collection_date, report_date, test_results
 }
 
 
@@ -42,7 +44,8 @@ def generate_report(state: DocState) -> DocState:
     validation_accuracy = (validated_count / expected_count * 100) if expected_count > 0 else 0
 
     # 2. Calculate Success Rate
-    pipeline_success = len(errors) == 0 and validated_count == expected_count
+    # Success means no errors were recorded during the pipeline
+    pipeline_success = len(errors) == 0
 
     # 3. PII Redaction Metrics
     pii_redaction_count = 0
@@ -112,14 +115,47 @@ def generate_report(state: DocState) -> DocState:
         }
     }
 
-    # 7. Save Report
-    file_name = f"report_{doc_type}_{int(time.time())}.json"
-    report_path = os.path.join(reports_dir, file_name)
+    # 7. Save Detailed Trace Report (JSON)
+    trace_file_name = f"trace_{doc_type}_{int(time.time())}.json"
+    trace_path = os.path.join(reports_dir, trace_file_name)
     
-    with open(report_path, "w") as f:
+    with open(trace_path, "w") as f:
         json.dump(report, f, indent=4)
     
-    print(f"✅ Report saved: {file_name}")
+    print(f"✅ Trace Report saved: {trace_file_name}")
+
+    # 8. Append to Aggregate Metrics Report (CSV)
+    metrics_csv_path = os.path.join(reports_dir, "metrics_report.csv")
+    file_exists = os.path.isfile(metrics_csv_path)
+    
+    import csv
+    with open(metrics_csv_path, "a", newline="") as csvfile:
+        fieldnames = [
+            "timestamp", "doc_type", "file_path", 
+            "extraction_completeness", "validation_accuracy", 
+            "pipeline_success", "error_count", "repair_attempts",
+            "redaction_coverage", "latency_ms" # Latency usually added by API/CLI, placeholder here
+        ]
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        
+        if not file_exists:
+            writer.writeheader()
+            
+        writer.writerow({
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "doc_type": doc_type,
+            "file_path": state.get("file_path", "unknown"),
+            "extraction_completeness": f"{extraction_completeness:.2f}%",
+            "validation_accuracy": f"{validation_accuracy:.2f}%",
+            "pipeline_success": pipeline_success,
+            "error_count": len(errors),
+            "repair_attempts": repair_attempts,
+            "redaction_coverage": f"{redaction_coverage:.2f}%",
+            "latency_ms": "N/A" # Calculated outside
+        })
+        
+    print(f"📊 Metrics appended to: {metrics_csv_path}")
+
     print(f"   Extraction: {extraction_completeness:.1f}% | Validation: {validation_accuracy:.1f}%")
     print(f"   Success: {pipeline_success} | Errors: {len(errors)} | Repairs: {repair_attempts}")
 
@@ -127,7 +163,7 @@ def generate_report(state: DocState) -> DocState:
     state["trace_log"].append({
         "agent": "reporter",
         "status": "completed",
-        "report_path": file_name,
+        "report_path": trace_file_name,
         "metrics": {
             "extraction_completeness": f"{extraction_completeness:.2f}%",
             "validation_accuracy": f"{validation_accuracy:.2f}%",

@@ -9,7 +9,7 @@ from app.agents.reporter import generate_report
 
 def router(state: DocState):
     doc_type = (state.get("doc_type") or "").lower().strip()
-    if doc_type in ["invoice", "id_card"]:
+    if doc_type in ["prescription", "lab_report"]:
         return "extractor"
     return "redactor"
 

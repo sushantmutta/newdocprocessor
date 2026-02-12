@@ -117,7 +117,22 @@ The pipeline is benchmarked against the following Prototype 2 targets:
 
 ## 🧪 Testing
 
+The system includes a multi-layered test suite to verify medical intelligence and pipeline robustness.
+
+### 1. Robustness E2E Suite (Core)
+Verifies the agentic pipeline against real-world challenges:
+- **Happy Path**: Standard prescriptions and lab reports.
+- **Missing Fields Resilience**: Handling of partial data/incomplete extraction.
+- **OCR Noise Robustness**: Data recovery from garbled or misspelled raw text.
+- **Parametrized Synthetic Data**: Batch verification across all supported categories.
+
 ```bash
-# Run comprehensive medical test suite
+# Run core E2E suite
+python -m pytest tests/test_e2e_scenarios.py -v
+```
+
+### 2. Clinical Specification Tests
+```bash
+# Run comprehensive medical unit tests
 python run_medical_tests.py
 ```

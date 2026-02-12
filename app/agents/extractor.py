@@ -5,76 +5,65 @@ from app.state import DocState
 
 # Enhanced specialized prompts for different document types
 PROMPTS = {
-    "prescription": """You are a specialized medical prescription extraction system.
+    "prescription": """You are an advanced Medical Document Intelligence Agent specializing in Prescriptions.
 
-TASK: Extract structured data from the prescription with 100% accuracy.
+TASK: Extract structured data from the document with 100% accuracy.
 
 REQUIRED FIELDS:
-1. date (string): Date of prescription (any format).
-
-2. doctor (object):
+1. doctor (object):
    - name: doctor's full name (e.g., "Dr. Gregory House")
    - license_number: Medical license (Format: StateCode-Digits e.g., "MH-12345")
-   - dea_number: DEA Registration Number if present (Format: 2 letters + 7 digits, e.g., "AB1234567")
-   - specialization: doctor's medical specialty
-
-3. patient (object):
+2. patient (object):
    - name: patient's full name
    - id: patient ID (Format: PT#####, e.g., "PT12345")
    - age: integer age
-   - weight: float weight in kg (CRITICAL for pediatric dosing)
    - gender: patient's gender (Male/Female)
+3. medications (list of objects):
+   - name: generic or brand name (e.g., "Amoxicillin")
+   - dosage: strength with unit (e.g., "500mg")
+   - frequency: intake instructions (e.g., "3 times daily")
+   - duration: treatment length (e.g., "7 days")
 
-4. diagnosis (string): Medical indication or diagnosis if stated.
+SPECIAL ATTENTION:
+- Capture specific instructions for Pediatric (child) or Geriatric (elderly) patients if mentioned.
+- Look for DEA Number if controlled substances (e.g., Morphine) are present.
+- Apply fuzzy matching for medical entities if text is noisy or handwritten.
 
-5. medications (list of objects):
-   - name: generic or brand name
-   - dosage: strength with unit (MUST be standard units: mg, ml, g, mcg, iu, tablet). Reject "liters" or invalid units.
-   - frequency: how often (e.g., "BID", "twice daily")
-   - duration: how long (e.g., "7 days")
-   - refills: number of refills allowed
+OUTPUT FORMAT: Return a JSON object with:
+- "document_type": "PRESCRIPTION"
+- "confidence_score": 0.0-1.0
+- "data": { ...extracted_fields... }""",
 
-EXTRACTION RULES:
-- Use null if a field is not found.
-- DEA number is MANDATORY for controlled substances (Morphine, etc).
-- Weight is MANDATORY for patients under 12.
+    "lab_report": """You are an advanced Medical Document Intelligence Agent specializing in Lab Reports.
 
-OUTPUT FORMAT: Return ONLY a raw JSON object.""",
-
-    "lab_report": """You are a specialized lab report extraction system.
-
-TASK: Extract structured data from the medical lab report with 100% accuracy.
+TASK: Extract structured data from the lab report with 100% accuracy.
 
 REQUIRED FIELDS:
 1. lab (object):
    - name: name of the laboratory
+   - report_id: unique report identifier (Format: LAB######, e.g., "LAB123456")
    - address: lab address
-   - accreditation: CLIA or CAP number
-
-2. patient (object):
-   - name: patient's full name
-   - dob: date of birth
-   - mrn: medical record number
-   - patient_id: internal ID
-
-3. report_id: unique report identifier (Format: LAB######, e.g., "LAB123456")
-4. is_amended (boolean): Set to true ONLY if document contains "AMENDED REPORT" or "CORRECTED REPORT".
-5. collection_date: Date sample collected.
-6. report_date: Date report issued.
-
-7. test_results (list of objects):
-   - test_name: name of the analyte
-   - value: numeric or string result
+   - accreditation: lab accreditation or CLIA number (e.g., "CLIA 10D1234567" or "CAP Accredited")
+   - has_pathologist_signature: boolean (True if you see "digitally signed by", "validated by", a names stamp, or signature image/line)
+2. dates (object):
+   - collection_date: Date sample collected (YYYY-MM-DD)
+   - report_date: Date report issued (YYYY-MM-DD)
+3. test_results (list of objects):
+   - test_name: name of the analyte (e.g., "Hemoglobin")
+   - value: numeric or string result (e.g., "14.5")
    - unit: measurement unit (e.g., "g/dL")
-   - reference_range: normal range string (e.g., "12.0 - 16.0")
-   - status: Explicit status from report. MUST be one of: "Normal", "High", "Low", "Critical", "Extreme".
+   - reference_range: normal range string (e.g., "12.0 - 18.0")
+   - status: Interpretation (Normal, High, Low, Critical, Extreme)
 
-EXTRACTION RULES:
-- If status is not explicit, derive it from reference range.
-- Mark status as "Critical" or "Extreme" if the report creates urgency (often red text or ALL CAPS).
-- Normalize dates where possible, but return original string if ambiguous.
+SPECIAL ATTENTION:
+- Detect if report is an AMENDED report (look for "AMENDED" or "CORRECTED").
+- Note any critical/panic ranges explicitly listed.
+- Apply fuzzy matching if text contains OCR noise.
 
-OUTPUT FORMAT: Return ONLY a raw JSON object."""
+OUTPUT FORMAT: Return a JSON object with:
+- "document_type": "LAB_REPORT"
+- "confidence_score": 0.0-1.0
+- "data": { ...extracted_fields... }"""
 }
 
 
@@ -110,15 +99,33 @@ def extract_data(state: DocState) -> DocState:
 
     try:
         # Clean the response string of any common LLM debris
-        clean_content = response.content.replace(
-            "```json", "").replace("```", "").strip()
-        extracted_json = json.loads(clean_content)
+        content = response.content.strip()
+        
+        # Robust JSON extraction: Find first '{' and last '}'
+        start = content.find('{')
+        end = content.rfind('}')
+        
+        if start != -1 and end != -1:
+            clean_content = content[start:end+1]
+        else:
+            clean_content = content
 
-        state["extracted_data"] = extracted_json
+        extracted_resp = json.loads(clean_content)
+
+        # Handle guide-compliant nested structure
+        if "data" in extracted_resp:
+            state["extracted_data"] = extracted_resp["data"]
+            state["confidence_score"] = float(extracted_resp.get("confidence_score", 0.85))
+        else:
+            # Fallback for non-compliant outputs
+            state["extracted_data"] = extracted_resp
+            state["confidence_score"] = 0.7 # Lower confidence if structure is unexpected
+
         state["trace_log"].append({
             "agent": f"extractor_{doc_type}",
             "status": "success",
-            "fields_found": list(extracted_json.keys())
+            "confidence": state["confidence_score"],
+            "fields_found": list(state["extracted_data"].keys())
         })
 
     except Exception as e:

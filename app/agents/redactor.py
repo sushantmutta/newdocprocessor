@@ -22,52 +22,33 @@ def redact_pii(state: DocState) -> DocState:
     }
 
     # 2. Enhanced LLM Layer: HIPAA/GDPR-Compliant PII Detection
-    system_prompt = f"""You are a HIPAA/Privacy Compliance Expert specializing in Medical PII redaction.
+    system_prompt = f"""You are an advanced Privacy Compliance Expert specializing in Medical PII Redaction.
 
 TASK: Identify and redact ALL protected health information (PHI/PII) from the {doc_type}.
 
-DOCUMENT CONTEXT: {doc_type}
-SENSITIVITY LEVEL: High (Medical Records)
-
-PII CATEGORIES TO REDACT:
-
-1. PERSONAL NAMES:
-   - Patient names, relative names, doctor names (in non-prescriber context)
-   - Nicknames, aliases
-   - Replace with: [NAME_REDACTED]
-
-2. CONTACT INFORMATION:
-   - Physical addresses (home, work)
-   - Email addresses
-   - Phone numbers
-   - Replace with: [ADDRESS_REDACTED], [EMAIL_REDACTED], [PHONE_REDACTED]
-
-3. IDENTIFIERS (CRITICAL):
-   - SSN (Social Security Numbers) -> [SSN_REDACTED]
-   - MRN (Medical Record Numbers) -> [MRN_REDACTED]
-   - Patient IDs/Member IDs -> [PATIENT_ID_REDACTED]
-   - Prescription Numbers (Rx#) -> [RX_NUM_REDACTED]
-   - Lab Specimen IDs -> [SPECIMEN_ID_REDACTED]
-   - Insurance Policy Numbers -> [INSURANCE_REDACTED]
-   - Passport/Driver License -> [ID_REDACTED]
-   - Account numbers -> [ACCOUNT_REDACTED]
-
-4. DATES (HIPAA Rule):
-   - All dates EXCEPT years (e.g., DOB, admission date, discharge date)
-   - Replace with: [DATE_REDACTED]
-
-5. BIOMETRICS & SENSITIVE ATTRIBUTES:
-   - Signatures, signature blocks -> [SIGNATURE_REDACTED]
-   - Dates of birth -> [DOB_REDACTED]
-   - Fingerprints, voice recordings (references)
+### MANDATORY REDACTION CATEGORIES:
+1. PII_HEAVY: Detect and mask all SSN, Date of Birth (Full), and Phone Numbers.
+   - SSN -> [SSN_REDACTED]
+   - DOB (Full) -> [DOB_REDACTED]
+   - Phone -> [PHONE_REDACTED]
+2. PERSONAL IDENTITY:
+   - Patient names, relatives, nicknames.
+   - Addresses (Physical and Email).
+   - Replace with: [NAME_REDACTED], [ADDRESS_REDACTED], [EMAIL_REDACTED]
+3. MEDICAL IDENTIFIERS:
+   - MRN, Patient IDs, Insurance/Policy numbers.
+   - Prescription Numbers (Rx#), Lab Specimen IDs.
+   - Replace with matching REDACTED tag (e.g., [MRN_REDACTED], [PATIENT_ID_REDACTED]).
+4. SENSITIVE ARTIFACTS:
+   - Signatures, Handwritten initials, Stamp markers.
+   - Replace with: [SIGNATURE_REDACTED]
 
 REDACTION RULES:
-1. Be CONSERVATIVE: When in doubt, redact
-2. Preserve document structure and readability
-3. Maintain original formatting as much as possible
+- Use fuzzy matching for handwritten simulation and noisy OCR text.
+- Be CONSERVATIVE: Redact if the content even resembles PII.
+- DO NOT summarize or omit clinical findings (medical names, dosages, results). ONLY replace identifiers.
 
-OUTPUT: Return the COMPLETE original text with PII replaced by redaction tags.
-Do NOT summarize, do NOT omit any content, ONLY replace PII with tags."""
+OUTPUT: Return the COMPLETE original text with all PII replaced by the specified redaction tags."""
 
     messages = [
         SystemMessage(content=system_prompt),

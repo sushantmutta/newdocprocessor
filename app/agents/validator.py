@@ -49,104 +49,67 @@ def validate_data(state: DocState) -> DocState:
         print(f"⚠️ {error_msg}")
         return state
 
+    # Create instance anyway to run clinical checks if possible
+    # We use .model_validate(data, from_attributes=True) or similar
+    # But simpler: make fields optional in schemas and handle None in checks.
+    
     try:
         # Pydantic validates and cleans the data
         validated_obj = schema_class(**data)
         state["validated_data"] = validated_obj.model_dump()
         
-        # Clear ONLY validation errors from Pydantic checks
-        state["errors"] = [
-            err for err in state.get("errors", [])
-            if not any(err.startswith(f"{field}:") for field in data.keys())
-        ]
-        
         # --- Perform Medical Validation Checks and Generate Flags ---
         flags = []
         
         if doc_type == "prescription":
-            # Check for controlled substances (now checks for DEA)
-            warnings = validated_obj.check_controlled_substances()
-            for w in warnings:
-                flags.append({
-                    "code": "CONTROLLED_SUBSTANCE",
-                    "message": w,
-                    "severity": "HIGH"  # DEA missing for controlled substance is high risk
-                })
-            
-            # Check for pediatric dosing (now checks for weight)
-            warnings = validated_obj.check_pediatric_dosing()
-            for w in warnings:
-                code = "PEDIATRIC_DOSING" if "WEIGHT" not in w else "MISSING_PEDIATRIC_WEIGHT"
-                flags.append({
-                    "code": code,
-                    "message": w,
-                    "severity": "MEDIUM"
-                })
+            flags.extend(validated_obj.check_extreme_dosage())
+            flags.extend(validated_obj.check_controlled_substances())
+            flags.extend(validated_obj.check_pediatric_dosing())
+            flags.extend(validated_obj.check_geriatric_polypharmacy())
+            flags.extend(validated_obj.check_missing_dosage())
+            flags.extend(validated_obj.check_unit_standards())
+            flags.extend(validated_obj.check_mandatory_fields())
 
         elif doc_type == "lab_report":
-            # Check for date consistency
-            warnings = validated_obj.check_date_consistency()
-            for w in warnings:
-                flags.append({
-                    "code": "DATE_INCONSISTENCY",
-                    "message": w,
-                    "severity": "MEDIUM"
-                })
-            
-            # Check for amended status (New)
-            warnings = validated_obj.check_amended_status()
-            for w in warnings:
-                flags.append({
-                    "code": "AMENDED_REPORT",
-                    "message": w,
-                    "severity": "LOW"
-                })
+            flags.extend(validated_obj.check_date_consistency())
+            flags.extend(validated_obj.check_amended_status())
+            flags.extend(validated_obj.check_critical_values())
+            flags.extend(validated_obj.check_extreme_values())
+            flags.extend(validated_obj.check_pathologist_signature())
+            flags.extend(validated_obj.check_unit_standards())
+            flags.extend(validated_obj.check_mandatory_fields())
 
-            # Check for critical values
-            criticals = validated_obj.check_critical_values()
-            for c in criticals:
-                flags.append({
-                    "code": "CRITICAL_VALUE",
-                    "message": c,
-                    "severity": "CRITICAL"
-                })
-
-        # Add PII check (simulated based on logic, usually comes from Redactor but we can flag here if needed)
-        # For now, we rely on the specific schema methods
-
-        state["validation_flags"].extend(flags)
+        # Sync with state
+        state["validation_flags"] = flags
         
         state["trace_log"].append({
             "agent": "validator",
             "status": "passed",
             "schema": schema_class.__name__,
-            "flags_generated": len(flags),
-            "flags": flags
+            "flags_generated": len(flags)
         })
-        
-        print(f"✅ Validation passed: {len(flags)} medical alerts generated")
 
     except ValidationError as e:
-        # Extract detailed error messages
-        error_messages = []
+        # If schema validation fails, we still want to try to flag what we can
+        # For now, let's just log the errors as flags for visibility
+        error_flags = []
         for err in e.errors():
             loc = err['loc']
             field_name = loc[0] if loc else "root"
-            error_messages.append(f"{field_name}: {err['msg']}")
+            error_flags.append({
+                "code": f"INVALID_{field_name.upper()}",
+                "message": f"Validation Error: {field_name} - {err['msg']}",
+                "severity": "HIGH"
+            })
         
-        # Append validation errors
-        state["errors"].extend(error_messages)
+        state["validation_flags"].extend(error_flags)
+        state["errors"].extend([f["message"] for f in error_flags])
         
         state["trace_log"].append({
             "agent": "validator",
             "status": "failed",
             "schema": schema_class.__name__,
-            "error_count": len(error_messages),
-            "errors": error_messages
+            "error_count": len(error_flags)
         })
-        
-        print(f"⚠️ Validation failed for {doc_type}: {len(error_messages)} errors")
-        for err_msg in error_messages:
-            print(f"   - {err_msg}")
 
     return state

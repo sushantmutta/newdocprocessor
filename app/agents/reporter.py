@@ -37,15 +37,27 @@ def generate_report(state: DocState) -> DocState:
 
     # 1. Calculate Extraction Completeness
     expected_count = EXPECTED_FIELDS.get(doc_type, 0)
-    extracted_count = len([v for v in (extracted_data or {}).values() if v is not None])
-    validated_count = len([v for v in (validated_data or {}).values() if v is not None])
+    # Filter out nested keys like 'dates' or 'doctor' if they are sub-objects
+    extracted_flat = {}
+    if isinstance(extracted_data, dict):
+        for k, v in extracted_data.items():
+            if isinstance(v, dict):
+                extracted_flat.update(v)
+            else:
+                extracted_flat[k] = v
     
-    extraction_completeness = (extracted_count / expected_count * 100) if expected_count > 0 else 0
-    validation_accuracy = (validated_count / expected_count * 100) if expected_count > 0 else 0
+    extracted_count = float(len([v for v in extracted_flat.values() if v is not None]))
+    
+    extraction_completeness = (extracted_count / float(expected_count) * 100) if expected_count > 0 else 0
+    # Calculate validation score (100% minus deduction for each flag, floor at 0)
+    flags = state.get("validation_flags", [])
+    validation_accuracy = max(0, 100 - (len(flags) * 10)) if extracted_count > 0 else 0
+    
+    # Use confidence_score from state
+    confidence_score = state.get("confidence_score", 0.0)
 
     # 2. Calculate Success Rate
-    # Success means no errors were recorded during the pipeline
-    pipeline_success = len(errors) == 0
+    pipeline_success = len(errors) == 0 and extracted_count > 0
 
     # 3. PII Redaction Metrics
     pii_redaction_count = 0
@@ -53,7 +65,6 @@ def generate_report(state: DocState) -> DocState:
     for log_entry in trace_log:
         if log_entry.get("agent") == "redactor":
             pii_types = log_entry.get("pii_types_scrubbed", [])
-            # Count redaction tags
             pii_redaction_count = sum([
                 redacted_text.count(f"[{pii_type}_REDACTED]") 
                 for pii_type in pii_types
@@ -72,7 +83,7 @@ def generate_report(state: DocState) -> DocState:
         if agent not in agent_performance:
             agent_performance[agent] = {"success": 0, "failed": 0, "skipped": 0}
         
-        if status in ["passed", "success", "completed", "fixed_attempted"]:
+        if status in ["passed", "success", "completed"]:
             agent_performance[agent]["success"] += 1
         elif status == "failed":
             agent_performance[agent]["failed"] += 1
@@ -83,29 +94,24 @@ def generate_report(state: DocState) -> DocState:
     report = {
         "document_info": {
             "type": doc_type,
-            "file_path": state.get("file_path", "unknown")
+            "file_path": state.get("file_path", "unknown"),
+            "confidence_score": confidence_score
         },
         "extraction_metrics": {
             "expected_fields": expected_count,
             "extracted_fields": extracted_count,
-            "validated_fields": validated_count,
             "extraction_completeness": f"{extraction_completeness:.2f}%",
-            "validation_accuracy": f"{validation_accuracy:.2f}%"
+            "confidence_level": "High" if confidence_score > 0.8 else ("Medium" if confidence_score > 0.5 else "Low")
         },
         "quality_metrics": {
             "pipeline_success": pipeline_success,
             "error_count": len(errors),
-            "errors": errors
+            "validation_flags": state.get("validation_flags", [])
         },
         "pii_redaction": {
             "redaction_count": pii_redaction_count,
             "pii_types_found": pii_types,
             "redaction_coverage": f"{redaction_coverage:.2f}%"
-        },
-        "repair_metrics": {
-            "repair_attempts": repair_attempts,
-            "repair_success": repair_success,
-            "final_status": "repaired" if repair_success else ("failed" if repair_attempts > 0 else "no_repair_needed")
         },
         "agent_performance": agent_performance,
         "trace": trace_log,

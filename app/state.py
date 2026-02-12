@@ -14,3 +14,4 @@ class DocState(TypedDict):
     repair_attempts: int
     llm_provider: Optional[str]  # Runtime LLM provider selection
     llm_model_name: Optional[str]  # Track which model was used
+    confidence_score: float  # AI confidence in extraction (0.0-1.0)

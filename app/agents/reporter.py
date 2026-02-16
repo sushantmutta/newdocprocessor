@@ -7,8 +7,9 @@ from app.state import DocState
 EXPECTED_FIELDS = {
     "invoice": 4,      # invoice_number, vendor_name, total_amount, date
     "id_card": 4,      # full_name, id_number, date_of_birth, expiry_date
-    "prescription": 5, # date, doctor, patient, medications, diagnosis
-    "lab_report": 7    # lab, patient_id, report_id, is_amended, collection_date, report_date, test_results
+    "prescription": 5,  # date, doctor, patient, medications, diagnosis
+    # lab, report_id, sample_type, collection_date, report_date, test_results, is_amended, (lab.pathologist_name)
+    "lab_report": 8
 }
 
 
@@ -45,14 +46,17 @@ def generate_report(state: DocState) -> DocState:
                 extracted_flat.update(v)
             else:
                 extracted_flat[k] = v
-    
-    extracted_count = float(len([v for v in extracted_flat.values() if v is not None]))
-    
-    extraction_completeness = (extracted_count / float(expected_count) * 100) if expected_count > 0 else 0
+
+    extracted_count = float(
+        len([v for v in extracted_flat.values() if v is not None]))
+
+    extraction_completeness = (
+        extracted_count / float(expected_count) * 100) if expected_count > 0 else 0
     # Calculate validation score (100% minus deduction for each flag, floor at 0)
     flags = state.get("validation_flags", [])
-    validation_accuracy = max(0, 100 - (len(flags) * 10)) if extracted_count > 0 else 0
-    
+    validation_accuracy = max(
+        0, 100 - (len(flags) * 10)) if extracted_count > 0 else 0
+
     # Use confidence_score from state
     confidence_score = state.get("confidence_score", 0.0)
 
@@ -66,23 +70,25 @@ def generate_report(state: DocState) -> DocState:
         if log_entry.get("agent") == "redactor":
             pii_types = log_entry.get("pii_types_scrubbed", [])
             pii_redaction_count = sum([
-                redacted_text.count(f"[{pii_type}_REDACTED]") 
+                redacted_text.count(f"[{pii_type}_REDACTED]")
                 for pii_type in pii_types
             ])
-    
-    redaction_coverage = (pii_redaction_count / len(raw_text.split())) * 100 if raw_text else 0
+
+    redaction_coverage = (pii_redaction_count /
+                          len(raw_text.split())) * 100 if raw_text else 0
 
     # 4. Repair Effectiveness
     repair_success = repair_attempts > 0 and pipeline_success
-    
+
     # 5. Agent Performance Breakdown
     agent_performance = {}
     for log_entry in trace_log:
         agent = log_entry.get("agent", "unknown")
         status = log_entry.get("status", "unknown")
         if agent not in agent_performance:
-            agent_performance[agent] = {"success": 0, "failed": 0, "skipped": 0}
-        
+            agent_performance[agent] = {
+                "success": 0, "failed": 0, "skipped": 0}
+
         if status in ["passed", "success", "completed"]:
             agent_performance[agent]["success"] += 1
         elif status == "failed":
@@ -124,29 +130,30 @@ def generate_report(state: DocState) -> DocState:
     # 7. Save Detailed Trace Report (JSON)
     trace_file_name = f"trace_{doc_type}_{int(time.time())}.json"
     trace_path = os.path.join(reports_dir, trace_file_name)
-    
+
     with open(trace_path, "w") as f:
         json.dump(report, f, indent=4)
-    
+
     print(f"✅ Trace Report saved: {trace_file_name}")
 
     # 8. Append to Aggregate Metrics Report (CSV)
     metrics_csv_path = os.path.join(reports_dir, "metrics_report.csv")
     file_exists = os.path.isfile(metrics_csv_path)
-    
+
     import csv
     with open(metrics_csv_path, "a", newline="") as csvfile:
         fieldnames = [
-            "timestamp", "doc_type", "file_path", 
-            "extraction_completeness", "validation_accuracy", 
+            "timestamp", "doc_type", "file_path",
+            "extraction_completeness", "validation_accuracy",
             "pipeline_success", "error_count", "repair_attempts",
-            "redaction_coverage", "latency_ms" # Latency usually added by API/CLI, placeholder here
+            # Latency usually added by API/CLI, placeholder here
+            "redaction_coverage", "latency_ms"
         ]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        
+
         if not file_exists:
             writer.writeheader()
-            
+
         writer.writerow({
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             "doc_type": doc_type,
@@ -157,13 +164,15 @@ def generate_report(state: DocState) -> DocState:
             "error_count": len(errors),
             "repair_attempts": repair_attempts,
             "redaction_coverage": f"{redaction_coverage:.2f}%",
-            "latency_ms": "N/A" # Calculated outside
+            "latency_ms": "N/A"  # Calculated outside
         })
-        
+
     print(f"📊 Metrics appended to: {metrics_csv_path}")
 
-    print(f"   Extraction: {extraction_completeness:.1f}% | Validation: {validation_accuracy:.1f}%")
-    print(f"   Success: {pipeline_success} | Errors: {len(errors)} | Repairs: {repair_attempts}")
+    print(
+        f"   Extraction: {extraction_completeness:.1f}% | Validation: {validation_accuracy:.1f}%")
+    print(
+        f"   Success: {pipeline_success} | Errors: {len(errors)} | Repairs: {repair_attempts}")
 
     # Add trace entry
     state["trace_log"].append({

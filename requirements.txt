@@ -30,6 +30,7 @@ pytesseract
 # Frontend
 streamlit
 requests
+sseclient-py  # For Server-Sent Events streaming
 flowise
 # If you truly need it (not required for OCR):
 # tesseract

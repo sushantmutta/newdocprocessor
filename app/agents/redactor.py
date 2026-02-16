@@ -6,10 +6,10 @@ from app.state import DocState
 
 def redact_pii(state: DocState) -> DocState:
     print("--- 🔒 Agent: Redactor ---")
-    
+
     # Initialize LLM manager with provider from state
     llm_manager = UnifiedLLMManager(provider=state.get("llm_provider"))
-    
+
     doc_type = (state.get("doc_type") or "document").lower().strip()
     text_to_redact = state["raw_text"]
 
@@ -27,28 +27,35 @@ def redact_pii(state: DocState) -> DocState:
 TASK: Identify and redact ALL protected health information (PHI/PII) from the {doc_type}.
 
 ### MANDATORY REDACTION CATEGORIES:
-1. PII_HEAVY: Detect and mask all SSN, Date of Birth (Full), and Phone Numbers.
-   - SSN -> [SSN_REDACTED]
-   - DOB (Full) -> [DOB_REDACTED]
-   - Phone -> [PHONE_REDACTED]
-2. PERSONAL IDENTITY:
+1. PERSONAL IDENTIFIERS:
    - Patient names, relatives, nicknames.
+   - Doctor/Provider names.
    - Addresses (Physical and Email).
-   - Replace with: [NAME_REDACTED], [ADDRESS_REDACTED], [EMAIL_REDACTED]
-3. MEDICAL IDENTIFIERS:
+   - Phone numbers.
+   - Replace with: [NAME_REDACTED], [ADDRESS_REDACTED], [EMAIL_REDACTED], [PHONE_REDACTED]
+2. UNIQUE IDENTIFIERS:
+   - SSN (Social Security Number).
    - MRN, Patient IDs, Insurance/Policy numbers.
    - Prescription Numbers (Rx#), Lab Specimen IDs.
-   - Replace with matching REDACTED tag (e.g., [MRN_REDACTED], [PATIENT_ID_REDACTED]).
-4. SENSITIVE ARTIFACTS:
+   - License numbers, DEA numbers.
+   - Replace with matching REDACTED tag (e.g., [SSN_REDACTED], [PATIENT_ID_REDACTED], [LICENSE_REDACTED]).
+3. SENSITIVE ARTIFACTS:
    - Signatures, Handwritten initials, Stamp markers.
    - Replace with: [SIGNATURE_REDACTED]
 
-REDACTION RULES:
-- Use fuzzy matching for handwritten simulation and noisy OCR text.
-- Be CONSERVATIVE: Redact if the content even resembles PII.
-- DO NOT summarize or omit clinical findings (medical names, dosages, results). ONLY replace identifiers.
+### IMPORTANT: DO NOT REDACT THE FOLLOWING:
+- **Dates**: Prescription dates, report dates, collection dates, service dates are NOT PHI and should remain visible.
+- **Medical Data**: Medication names, dosages, test results, diagnoses, lab values.
+- **Ages**: Patient age is allowed and should not be redacted.
+- **Clinical Information**: Keep all medical findings, instructions, and clinical data intact.
 
-OUTPUT: Return the COMPLETE original text with all PII replaced by the specified redaction tags."""
+REDACTION RULES:
+- Only redact Date of Birth (DOB) if explicitly labeled as "Date of Birth" or "DOB".
+- General dates on prescriptions and reports should NOT be redacted.
+- Be CONSERVATIVE with identifiers but PRESERVE medical context and dates.
+- Use fuzzy matching for handwritten simulation and noisy OCR text.
+
+OUTPUT: Return the COMPLETE original text with only PII/PHI identifiers replaced by the specified redaction tags. Keep all dates, medical data, and clinical information intact."""
 
     messages = [
         SystemMessage(content=system_prompt),

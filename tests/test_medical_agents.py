@@ -4,10 +4,12 @@ from app.agents.classifier import classify_doc
 from app.agents.validator import validate_data
 from app.state import DocState
 
+
 @pytest.fixture
 def mock_llm():
     with patch('app.agents.classifier.UnifiedLLMManager') as mock:
         yield mock
+
 
 class TestClassifierAgent:
     def test_classify_prescription(self, mock_llm):
@@ -20,7 +22,7 @@ class TestClassifierAgent:
 
         state = DocState(raw_text="Rx: Amoxicillin 500mg...", trace_log=[])
         result = classify_doc(state)
-        
+
         assert result["doc_type"] == "prescription"
 
     def test_classify_lab_report(self, mock_llm):
@@ -33,17 +35,19 @@ class TestClassifierAgent:
 
         state = DocState(raw_text="Test Results: Hemoglobin...", trace_log=[])
         result = classify_doc(state)
-        
+
         assert result["doc_type"] == "lab_report"
+
 
 class TestValidatorAgent:
     def test_validate_prescription_flags(self):
         # Test that validator correctly generates flags for a prescription with issues
         data = {
             "doctor": {"name": "Dr. House", "license_number": "MD00"},
-            "patient": {"name": "Kid", "age": 5}, # Pediatric
+            "patient": {"name": "Kid", "age": 5},  # Pediatric
             "medications": [
-                {"name": "Morphine", "dosage": "5mg", "frequency": "QD"} # Controlled
+                {"name": "Morphine", "dosage": "5mg",
+                    "frequency": "QD"}  # Controlled
             ],
             "date": "2024-03-15"
         }
@@ -53,30 +57,31 @@ class TestValidatorAgent:
             errors=[],
             trace_log=[]
         )
-        
+
         result = validate_data(state)
-        
+
         assert "validation_flags" in result
         flags = result["validation_flags"]
-        
+
         # Should have 2 flags: Pediatric and Controlled Substance
         codes = [f["code"] for f in flags]
         assert "PEDIATRIC_DOSING" in codes
-        assert "CONTROLLED_SUBSTANCE" in codes
-        
+        assert "CONTROLLED_SUBSTANCE_NO_DEA" in codes
+
         # Verify severity
         for f in flags:
-            if f["code"] == "CONTROLLED_SUBSTANCE":
-                assert f["severity"] == "HIGH"
+            if f["code"] == "CONTROLLED_SUBSTANCE_NO_DEA":
+                assert f["severity"] == "CRITICAL"
 
     def test_validate_lab_critical(self):
         data = {
-            "lab": {"name": "Lab"},
+            "lab": {"name": "Lab", "has_pathologist_signature": True, "accreditation": "CLIA-123"},
             "report_id": "1",
             "collection_date": "2024-03-14",
             "report_date": "2024-03-15",
             "test_results": [
-                {"test_name": "Hgb", "value": 5.0, "unit": "g/dL", "status": "Critical"}
+                {"test_name": "Hgb", "value": 5.0,
+                    "unit": "g/dL", "status": "Critical"}
             ]
         }
         state = DocState(
@@ -85,9 +90,9 @@ class TestValidatorAgent:
             errors=[],
             trace_log=[]
         )
-        
+
         result = validate_data(state)
-        
+
         assert len(result["validation_flags"]) == 1
         assert result["validation_flags"][0]["code"] == "CRITICAL_VALUE"
         assert result["validation_flags"][0]["severity"] == "CRITICAL"

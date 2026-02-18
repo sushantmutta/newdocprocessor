@@ -35,8 +35,11 @@ def process_file(file_path: str, provider: str = "groq"):
             errors=[],
             trace_log=[],
             repair_attempts=0,
+            repair_summary=None,
             llm_provider=provider,
-            llm_model_name=None
+            llm_model_name=None,
+            confidence_score=0.0,
+            start_time=start_time
         )
 
         # Run Graph

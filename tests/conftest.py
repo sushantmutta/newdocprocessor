@@ -72,12 +72,16 @@ def sample_invoice_state():
         doc_type=None,
         extracted_data=None,
         validated_data=None,
+        validation_flags=[],
         redacted_text=None,
         errors=[],
         trace_log=[],
         repair_attempts=0,
+        repair_summary=None,
         llm_provider="ollama",
-        llm_model_name=None
+        llm_model_name=None,
+        confidence_score=0.0,
+        start_time=None
     )
 
 
@@ -94,12 +98,16 @@ def sample_id_card_state():
         doc_type=None,
         extracted_data=None,
         validated_data=None,
+        validation_flags=[],
         redacted_text=None,
         errors=[],
         trace_log=[],
         repair_attempts=0,
+        repair_summary=None,
         llm_provider="ollama",
-        llm_model_name=None
+        llm_model_name=None,
+        confidence_score=0.0,
+        start_time=None
     )
 
 

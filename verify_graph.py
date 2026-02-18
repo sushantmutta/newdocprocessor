@@ -18,11 +18,19 @@ def verify_graph():
     initial_state = DocState(
         raw_text="Rx: Amoxicillin 500mg, Take 1 tablet by mouth twice daily for 7 days. Dr. Gregory House.",
         file_path="mock_prescription.txt",
+        doc_type=None,
         llm_provider="groq", # Mock
         extracted_data={},
         validated_data={},
+        validation_flags=[],
+        redacted_text=None,
         errors=[],
-        trace_log=[]
+        trace_log=[],
+        repair_attempts=0,
+        repair_summary=None,
+        llm_model_name=None,
+        confidence_score=0.0,
+        start_time=None
     )
     
     print(f"Input Text: {initial_state['raw_text']}")

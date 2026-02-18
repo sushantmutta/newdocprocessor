@@ -1,0 +1,26 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	classifier(classifier)
+	extractor(extractor)
+	validator(validator)
+	repair(repair)
+	redactor(redactor)
+	reporter(reporter)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> classifier;
+	classifier -.-> extractor;
+	classifier -.-> redactor;
+	extractor --> validator;
+	redactor --> reporter;
+	repair --> validator;
+	validator -.-> redactor;
+	validator -.-> repair;
+	reporter --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

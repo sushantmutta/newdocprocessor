@@ -68,6 +68,7 @@ Document says "Aspirin 500mg" → Extract: "500mg" (correct, no change needed)
 
 4. diagnosis: medical diagnosis or indication if present
 5. date: prescription date in any format
+6. follow_up_date: follow-up appointment date if mentioned (any format)
 
 SPECIAL ATTENTION:
 - EXTRACT dosages exactly as written - do not convert or correct during extraction
@@ -94,7 +95,7 @@ REQUIRED FIELDS:
    - address: lab address
    - accreditation: lab accreditation or CLIA number (e.g., "CLIA 10D1234567" or "CAP Accredited")
    - pathologist_name: name of the pathologist who validated/signed the report (extract actual name, if you see "N/A" or blank, extract "N/A")
-   - has_pathologist_signature: boolean (True if you see "digitally signed by", "validated by", a names stamp, or signature image/line)
+   - has_pathologist_signature: boolean (True if pathologist name is present and valid (NOT "N/A"), OR you see "digitally signed by", "validated by", signature line, or stamp)
 2. report_id: unique report identifier (Format: LAB######, e.g., "LAB123456")
 3. sample_type: type of specimen (e.g., "Serum", "Plasma", "Whole Blood", "Urine", "CSF") - CRITICAL for test interpretation
 4. collection_date: Date sample collected (any format)
@@ -102,14 +103,23 @@ REQUIRED FIELDS:
 6. test_results (list of objects):
    - test_name: name of the analyte (e.g., "Hemoglobin")
    - value: numeric or string result (e.g., "14.5")
-   - unit: measurement unit (e.g., "g/dL")
+   - unit: measurement unit (e.g., "g/dL", "mg/dL", "cells/mcL", "pg/mL", "U/L", "mmol/L", "ng/mL")
    - reference_range: normal range string (e.g., "12.0 - 18.0")
    - status: Interpretation (Normal, High, Low, Critical, Extreme)
 7. is_amended: boolean (True if this is an AMENDED/CORRECTED report)
 
+STANDARD LAB UNITS (Extract exactly as shown - these are all valid):
+- Hematology: g/dL, cells/mcL, cells/μL, 10^3/μL, 10^6/μL, fL, pg, %
+- Chemistry: mg/dL, mmol/L, mEq/L, U/L, IU/L, μg/dL, ng/mL, pg/mL
+- Lipids: mg/dL, mmol/L
+- Vitamins: ng/mL, pg/mL, nmol/L, μg/L
+- Hormones: mIU/L, ng/dL, pg/mL, pmol/L
+
 SPECIAL ATTENTION:
 - CRITICAL: Extract pathologist name exactly as shown. If it says "N/A" or is blank, set pathologist_name to "N/A".
+- CRITICAL: Set has_pathologist_signature to TRUE if pathologist name is a valid name (like "Dr. Kumar", "Dr. Smith"). Only set to FALSE if pathologist name is "N/A" or missing.
 - CRITICAL: Extract sample type - look for "Sample Type:", "Specimen:", "Sample:" labels.
+- CRITICAL: Extract units EXACTLY as written - do NOT modify or convert units (e.g., "cells/mcL" stays "cells/mcL", "pg/mL" stays "pg/mL").
 - Detect if report is an AMENDED report (look for "AMENDED" or "CORRECTED").
 - Note any critical/panic ranges explicitly listed.
 - Apply fuzzy matching if text contains OCR noise.

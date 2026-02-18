@@ -62,6 +62,7 @@ def validate_data(state: DocState) -> DocState:
         flags = []
 
         if doc_type == "prescription":
+            flags.extend(validated_obj.check_date_consistency())
             flags.extend(validated_obj.check_extreme_dosage())
             flags.extend(validated_obj.check_controlled_substances())
             flags.extend(validated_obj.check_pediatric_dosing())

@@ -14,7 +14,8 @@ def mock_llm():
     # Patch the class in all modules where it's imported
     with patch('app.agents.classifier.UnifiedLLMManager') as m1, \
             patch('app.agents.extractor.UnifiedLLMManager') as m2, \
-            patch('app.agents.redactor.UnifiedLLMManager') as m3:
+            patch('app.agents.redactor.UnifiedLLMManager') as m3, \
+            patch('app.agents.repair.UnifiedLLMManager') as m4:
         mock_instance = Mock()
         # Ensure metadata values are strings to avoid JSON serialization errors
         mock_instance.provider_name = "groq"
@@ -23,6 +24,7 @@ def mock_llm():
         m1.return_value = mock_instance
         m2.return_value = mock_instance
         m3.return_value = mock_instance
+        m4.return_value = mock_instance
         yield mock_instance
 
 
@@ -49,9 +51,19 @@ class TestE2EScenarios:
         state = DocState(
             raw_text="Rx: Amoxicillin for John Doe from Dr. Smith. License: MH-12345",
             file_path="prescription.txt",
+            doc_type=None,
+            extracted_data=None,
+            validated_data=None,
+            validation_flags=[],
+            redacted_text=None,
             trace_log=[],
             errors=[],
-            llm_provider="groq"
+            repair_attempts=0,
+            repair_summary=None,
+            llm_provider="groq",
+            llm_model_name=None,
+            confidence_score=0.0,
+            start_time=None
         )
 
         # Step 1: Classify
@@ -91,8 +103,23 @@ class TestE2EScenarios:
             Mock(content="Redacted")
         ]
 
-        state = DocState(raw_text="Rx: LupusMed 6000mg", file_path="lethal.txt", trace_log=[
-        ], errors=[], llm_provider="groq")
+        state = DocState(
+            raw_text="Rx: LupusMed 6000mg",
+            file_path="lethal.txt",
+            doc_type=None,
+            extracted_data=None,
+            validated_data=None,
+            validation_flags=[],
+            redacted_text=None,
+            trace_log=[],
+            errors=[],
+            repair_attempts=0,
+            repair_summary=None,
+            llm_provider="groq",
+            llm_model_name=None,
+            confidence_score=0.0,
+            start_time=None
+        )
         state = classify_doc(state)
         state = extract_data(state)
         state = validate_data(state)
@@ -121,9 +148,19 @@ class TestE2EScenarios:
         state = DocState(
             raw_text="Partial prescription text...",
             file_path="partial.txt",
+            doc_type=None,
+            extracted_data=None,
+            validated_data=None,
+            validation_flags=[],
+            redacted_text=None,
             trace_log=[],
             errors=[],
-            llm_provider="groq"
+            repair_attempts=0,
+            repair_summary=None,
+            llm_provider="groq",
+            llm_model_name=None,
+            confidence_score=0.0,
+            start_time=None
         )
 
         state = classify_doc(state)
@@ -155,8 +192,23 @@ class TestE2EScenarios:
             Mock(content="Redacted")
         ]
 
-        state = DocState(raw_text="K+ 7.2 CRITICAL", file_path="lab.txt",
-                         trace_log=[], errors=[], llm_provider="groq")
+        state = DocState(
+            raw_text="K+ 7.2 CRITICAL",
+            file_path="lab.txt",
+            doc_type=None,
+            extracted_data=None,
+            validated_data=None,
+            validation_flags=[],
+            redacted_text=None,
+            trace_log=[],
+            errors=[],
+            repair_attempts=0,
+            repair_summary=None,
+            llm_provider="groq",
+            llm_model_name=None,
+            confidence_score=0.0,
+            start_time=None
+        )
         state = classify_doc(state)
         state = extract_data(state)
         state = validate_data(state)
@@ -183,8 +235,23 @@ class TestE2EScenarios:
                 Mock(content="Redacted")  # Redactor
             ]
 
-            state = DocState(raw_text=text, file_path="synth.txt",
-                             trace_log=[], errors=[], llm_provider="groq")
+            state = DocState(
+                raw_text=text,
+                file_path="synth.txt",
+                doc_type=None,
+                extracted_data=None,
+                validated_data=None,
+                validation_flags=[],
+                redacted_text=None,
+                trace_log=[],
+                errors=[],
+                repair_attempts=0,
+                repair_summary=None,
+                llm_provider="groq",
+                llm_model_name=None,
+                confidence_score=0.0,
+                start_time=None
+            )
             state = classify_doc(state)
             assert state["doc_type"] == doc_type.lower()
 
@@ -196,3 +263,143 @@ class TestE2EScenarios:
             state = redact_pii(state)
             state = generate_report(state)
             assert state["trace_log"][-1]["status"] == "completed"
+
+    def test_repair_agent_unit_correction(self, mock_llm):
+        """Test repair agent fixing NON_STANDARD_UNIT errors."""
+        # Step 1: Classification
+        # Step 2: Extraction with bad units
+        # Step 3: Validation flags NON_STANDARD_UNIT
+        # Step 4: Repair corrects the unit
+        mock_llm.invoke_with_fallback.side_effect = [
+            Mock(content="PRESCRIPTION"),  # Classifier
+            Mock(content=json.dumps({     # Extractor (with bad unit)
+                "document_type": "PRESCRIPTION",
+                "confidence_score": 0.92,
+                "data": {
+                    "doctor": {"name": "Dr. Johnson", "license_number": "CA-54321"},
+                    "patient": {"name": "Alice Smith", "age": 35},
+                    "medications": [{"name": "Aspirin", "dosage": "500 liters daily", "frequency": "once daily"}]
+                }
+            })),
+            Mock(content=json.dumps({     # Repair agent (corrects to mg)
+                "doctor": {"name": "Dr. Johnson", "license_number": "CA-54321"},
+                "patient": {"name": "Alice Smith", "age": 35},
+                "medications": [{"name": "Aspirin", "dosage": "500 mg", "frequency": "once daily"}]
+            })),
+            Mock(content="Redacted prescription")  # Redactor
+        ]
+
+        state = DocState(
+            raw_text="Rx: Aspirin 500mg for Alice Smith from Dr. Johnson",
+            file_path="repair_test.txt",
+            doc_type=None,
+            extracted_data=None,
+            validated_data=None,
+            validation_flags=[],
+            redacted_text=None,
+            trace_log=[],
+            errors=[],
+            repair_attempts=0,
+            repair_summary=None,
+            llm_provider="groq",
+            llm_model_name=None,
+            confidence_score=0.0,
+            start_time=None
+        )
+
+        # Execute pipeline
+        state = classify_doc(state)
+        assert state["doc_type"] == "prescription"
+
+        state = extract_data(state)
+        assert state["extracted_data"]["medications"][0]["dosage"] == "500 liters daily"
+
+        state = validate_data(state)
+        # Should flag NON_STANDARD_UNIT or INVALID_DOSAGE_UNIT
+        flags = [f["code"] for f in state["validation_flags"]]
+        assert any(code in flags for code in [
+                   "NON_STANDARD_UNIT", "INVALID_DOSAGE_UNIT"])
+
+        # Import repair functions
+        from app.agents.repair import repair_data, should_repair
+
+        # Check if repair is needed
+        assert should_repair(state) == "repair"
+
+        # Execute repair
+        state = repair_data(state)
+        assert state["repair_attempts"] == 1
+        assert state["repair_summary"] is not None
+
+        # Re-validate after repair
+        state = validate_data(state)
+        # After repair, the unit should be fixed
+        assert "mg" in state["extracted_data"]["medications"][0]["dosage"]
+
+    def test_repair_max_attempts(self, mock_llm):
+        """Test that repair agent aborts after max attempts."""
+        from app.agents.repair import repair_data
+
+        mock_llm.invoke_with_fallback.return_value = Mock(
+            content=json.dumps({
+                "medications": [{"name": "Drug", "dosage": "bad unit"}]
+            })
+        )
+
+        state = DocState(
+            raw_text="Test doc",
+            file_path="test.txt",
+            doc_type="prescription",
+            extracted_data={"medications": [
+                {"name": "Drug", "dosage": "500 liters"}]},
+            validated_data=None,
+            validation_flags=[
+                {"code": "NON_STANDARD_UNIT", "severity": "MEDIUM"}],
+            redacted_text=None,
+            trace_log=[],
+            errors=[],
+            repair_attempts=3,  # Already at max
+            repair_summary=None,
+            llm_provider="groq",
+            llm_model_name=None,
+            confidence_score=0.0,
+            start_time=None
+        )
+
+        # Should skip repair due to max attempts
+        state = repair_data(state)
+        assert "Maximum repair attempts" in state["errors"][-1]
+        assert any(log["action"] == "abort" for log in state["trace_log"])
+
+    def test_no_repair_needed(self, mock_llm):
+        """Test that repair is skipped when no unit errors exist."""
+        from app.agents.repair import repair_data, should_repair
+
+        state = DocState(
+            raw_text="Test doc",
+            file_path="test.txt",
+            doc_type="prescription",
+            extracted_data={
+                "doctor": {"name": "Dr. Test"},
+                "medications": [{"name": "Aspirin", "dosage": "500 mg"}]
+            },
+            validated_data=None,
+            validation_flags=[
+                {"code": "MISSING_PATIENT_ID", "severity": "LOW"}],
+            redacted_text=None,
+            trace_log=[],
+            errors=[],
+            repair_attempts=0,
+            repair_summary=None,
+            llm_provider="groq",
+            llm_model_name=None,
+            confidence_score=0.0,
+            start_time=None
+        )
+
+        # Should route to redactor, not repair
+        assert should_repair(state) == "redactor"
+
+        # If repair is called anyway, it should skip
+        state = repair_data(state)
+        assert any(log.get("action") == "skip" for log in state["trace_log"])

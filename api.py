@@ -66,7 +66,8 @@ async def process_document(
             llm_provider=llm_provider.lower(),  # Pass provider to agents
             llm_model_name=None,
             confidence_score=0.0,
-            validation_flags=[]
+            validation_flags=[],
+            start_time=start_time  # Track start time for latency calculation
         )
 
         # 3. Graph Invocation (with thread_id for checkpointer)

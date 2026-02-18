@@ -107,35 +107,54 @@ class LabReportSchema(BaseModel):
         return flags
 
     def check_pathologist_signature(self) -> List[dict]:
-        """Flag missing pathologist signature for liability."""
+        """Flag missing pathologist signature for liability.
+
+        Signature is considered PRESENT if:
+        - Pathologist name is valid (not N/A, null, etc.) OR
+        - has_pathologist_signature flag is True
+
+        Signature is considered MISSING if:
+        - Pathologist name is N/A/null/missing AND
+        - has_pathologist_signature flag is False
+        """
         flags = []
-        # Only flag if test results exist
+        # Only check if test results exist
         if len(self.test_results) > 0:
-            # Check if signature is explicitly False
-            if not self.lab.has_pathologist_signature:
+            # Define invalid pathologist names
+            invalid_names = ["n/a", "na", "null", "none", "-",
+                             "not available", "pending", ""]
+
+            # Check if pathologist name is valid
+            pathologist_name_valid = False
+            if self.lab.pathologist_name:
+                name_lower = self.lab.pathologist_name.lower().strip()
+                pathologist_name_valid = name_lower not in invalid_names
+
+            # Signature is present if EITHER:
+            # 1. Pathologist name is valid (a real name like "Dr. Kumar")
+            # 2. has_pathologist_signature flag is True
+            signature_present = pathologist_name_valid or self.lab.has_pathologist_signature
+
+            # Flag only if signature is MISSING (both checks fail)
+            if not signature_present:
                 flags.append({
                     "code": "MISSING_PATHOLOGIST_SIGNATURE",
                     "message": "Liability risk: Lab report lacks pathologist signature or validation.",
                     "severity": "MEDIUM"
                 })
-            # Check if pathologist name is N/A or missing
-            elif self.lab.pathologist_name:
-                invalid_names = ["n/a", "na", "null",
-                                 "none", "-", "not available", "pending"]
-                if self.lab.pathologist_name.lower().strip() in invalid_names:
-                    flags.append({
-                        "code": "INVALID_PATHOLOGIST_NAME",
-                        "message": f"Liability risk: Pathologist name is '{self.lab.pathologist_name}' - report lacks proper validation by authorized personnel.",
-                        "severity": "MEDIUM"
-                    })
+
         return flags
 
     def check_unit_standards(self) -> List[dict]:
         """Flag non-standard medical units in lab results."""
         flags = []
-        # Common valid lab units
-        standard_units = ["mg/dl", "g/dl", "u/l", "iu/l", "mmol/l",
-                          "meq/l", "cells/mcL", "%", "ratio", "pg", "ng/ml", "ug/dl"]
+        # Common valid lab units (normalized to lowercase for comparison)
+        standard_units = [
+            "mg/dl", "g/dl", "u/l", "iu/l", "mmol/l", "meq/l",
+            "cells/mcl", "cells/μl", "10^3/μl", "10^6/μl",
+            "%", "ratio", "fl", "pg", "pg/ml", "ng/ml", "μg/dl", "ug/dl",
+            "miu/l", "ng/dl", "pmol/l", "nmol/l", "μg/l"
+        ]
         for res in self.test_results:
             if not res.unit or not res.value:
                 continue

@@ -79,9 +79,11 @@ class TestValidatorAgent:
             "report_id": "1",
             "collection_date": "2024-03-14",
             "report_date": "2024-03-15",
+            "sample_type": "Whole Blood",  # Added to prevent MISSING_SAMPLE_TYPE flag
             "test_results": [
                 {"test_name": "Hgb", "value": 5.0,
-                    "unit": "g/dL", "status": "Critical"}
+                    "unit": "g/dL", "status": "Critical",
+                    "reference_range": "13.5-17.5 g/dL"}  # Added to prevent MISSING_REFERENCE_RANGE flag
             ]
         }
         state = DocState(
@@ -93,6 +95,17 @@ class TestValidatorAgent:
 
         result = validate_data(state)
 
-        assert len(result["validation_flags"]) == 1
-        assert result["validation_flags"][0]["code"] == "CRITICAL_VALUE"
-        assert result["validation_flags"][0]["severity"] == "CRITICAL"
+        # Should get 2 flags: CRITICAL_VALUE (from status) + OUT_OF_RANGE_LOW (from range check)
+        assert len(result["validation_flags"]) == 2
+
+        # Verify CRITICAL_VALUE flag exists
+        critical_flags = [f for f in result["validation_flags"]
+                          if f["code"] == "CRITICAL_VALUE"]
+        assert len(critical_flags) == 1
+        assert critical_flags[0]["severity"] == "CRITICAL"
+
+        # Verify OUT_OF_RANGE_LOW flag exists
+        range_flags = [f for f in result["validation_flags"]
+                       if f["code"] == "OUT_OF_RANGE_LOW"]
+        assert len(range_flags) == 1
+        assert range_flags[0]["severity"] == "CRITICAL"

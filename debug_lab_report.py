@@ -43,12 +43,20 @@ def test_lab_report():
     
     state = DocState(
         raw_text=raw_text,
+        file_path="debug_lab.txt",
         doc_type="lab_report",
         llm_provider="groq", # Mocking provider
         extracted_data={},
         validated_data={},
+        validation_flags=[],
+        redacted_text=None,
         errors=[],
-        trace_log=[]
+        trace_log=[],
+        repair_attempts=0,
+        repair_summary=None,
+        llm_model_name=None,
+        confidence_score=0.0,
+        start_time=None
     )
 
     # 2. Run Extractor

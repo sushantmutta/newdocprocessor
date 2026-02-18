@@ -1,4 +1,5 @@
-from typing import TypedDict, List, Optional, Any
+from typing import List, Optional, Any
+from typing_extensions import TypedDict
 
 
 class DocState(TypedDict):
@@ -17,3 +18,9 @@ class DocState(TypedDict):
     llm_provider: Optional[str]  # Runtime LLM provider selection
     llm_model_name: Optional[str]  # Track which model was used
     confidence_score: float  # AI confidence in extraction (0.0-1.0)
+    # Timestamp when processing started (for latency tracking)
+    start_time: Optional[float]
+    # Ground truth PII for recall/precision calculation
+    ground_truth_pii: Optional[List[dict]]
+    # Auto-detected PII entities from document (for automated recall/precision)
+    detected_pii: Optional[List[dict]]

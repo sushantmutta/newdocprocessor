@@ -903,7 +903,7 @@ if uploaded_file is not None:
             # Metrics
             st.markdown("## Results Overview")
 
-            metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+            metric_col1, metric_col2, metric_col3 = st.columns(3)
 
             with metric_col1:
                 st.metric(
@@ -912,30 +912,12 @@ if uploaded_file is not None:
                 )
 
             with metric_col2:
-                # NEW: Display confidence score from structured output parser
-                confidence = result.get('confidence_score', 0.0)
-                confidence_pct = f"{confidence * 100:.0f}%" if confidence else "N/A"
-                confidence_delta = None
-                if confidence and confidence > 0.8:
-                    confidence_delta = "High"
-                elif confidence and confidence > 0.5:
-                    confidence_delta = "Medium"
-                elif confidence:
-                    confidence_delta = "Low"
-
-                st.metric(
-                    "Confidence Score",
-                    confidence_pct,
-                    delta=confidence_delta
-                )
-
-            with metric_col3:
                 st.metric(
                     "Processing Time",
                     f"{result.get('latency_ms', 0) / 1000:.2f}s"
                 )
 
-            with metric_col4:
+            with metric_col3:
                 errors = result.get('errors', [])
                 validation_flags = result.get('validation_flags', [])
 
@@ -1047,6 +1029,27 @@ if uploaded_file is not None:
 
             with tab3:
                 st.markdown("### PII-Redacted Text")
+
+                # Show PII detection summary
+                detected_pii = result.get('detected_pii', [])
+                if detected_pii:
+                    st.info(
+                        f"🔍 **Detected {len(detected_pii)} PII entities** - Automatically identified using HIPAA compliance standards")
+
+                    # Group by type for summary
+                    pii_by_type = {}
+                    for pii in detected_pii:
+                        pii_type = pii.get('type', 'UNKNOWN')
+                        if pii_type not in pii_by_type:
+                            pii_by_type[pii_type] = 0
+                        pii_by_type[pii_type] += 1
+
+                    # Display as compact summary
+                    summary_parts = [
+                        f"**{ptype}**: {count}" for ptype, count in sorted(pii_by_type.items())]
+                    st.markdown(" • ".join(summary_parts))
+                    st.markdown("---")
+
                 redacted_text = result.get('redacted_text', '')
 
                 if redacted_text:
@@ -1060,74 +1063,145 @@ if uploaded_file is not None:
                     st.info("No redacted text available")
 
             with tab4:
-                st.markdown("### 📊 Reporter Metrics")
+                st.markdown("### 📊 Performance Metrics")
 
-                # Extract reporter data from trace (or direct if available)
-                # ... (existing reporter logic)
-                metrics_file = result.get('metrics_file')  # If API returns it
+                # Import metrics evaluator
+                import sys
+                import os
+                sys.path.append(os.path.dirname(
+                    os.path.dirname(os.path.abspath(__file__))))
+                from app.metrics_evaluator import get_metrics_summary
 
-                # Using trace to find reporter output
-                reporter_data = None
-                for step in result.get('trace', []):
-                    if step.get('agent') == 'reporter':
-                        reporter_data = step.get('metrics', {})
-                        break
+                # Get comprehensive metrics
+                try:
+                    metrics_report = get_metrics_summary(
+                        include_llm_insights=False,
+                        llm_provider='groq'
+                    )
 
-                if reporter_data:
-                    # Extraction Metrics
-                    st.markdown("#### 📋 Extraction Metrics")
+                    # === HEADER ===
+                    st.markdown(
+                        "*Aggregate performance across all processed documents*")
+                    st.markdown("")
+
+                    # Summary
                     col1, col2, col3 = st.columns(3)
-
                     with col1:
                         st.metric(
-                            "Extraction Completeness",
-                            reporter_data.get('extraction_completeness', 'N/A')
-                        )
-
+                            "Documents Processed", metrics_report['summary']['total_documents_processed'])
                     with col2:
                         st.metric(
-                            "Validation Accuracy",
-                            reporter_data.get('validation_accuracy', 'N/A')
-                        )
-
+                            "Targets Met", metrics_report['summary']['overall_compliance'])
                     with col3:
-                        pipeline_success = reporter_data.get(
-                            'pipeline_success', False)
-                        st.metric(
-                            "Pipeline Status",
-                            "Success" if pipeline_success else "Failed"
-                        )
-
-                    if not pipeline_success:
-                        st.error("#### Pipeline Errors")
-                        pipeline_errors = result.get('errors', [])
-                        if pipeline_errors:
-                            for err in pipeline_errors:
-                                st.write(f"- {err}")
-                        else:
-                            st.write(
-                                "No specific error messages found in trace, but success criteria not met.")
+                        targets_met = len(
+                            metrics_report['summary']['targets_met'])
+                        total_targets = targets_met + \
+                            len(metrics_report['summary']['targets_missed'])
+                        compliance = (targets_met / total_targets *
+                                      100) if total_targets > 0 else 0
+                        st.metric("Compliance Rate", f"{compliance:.0f}%")
 
                     st.markdown("---")
-                    st.markdown("#### PII Redaction Summary")
-                    # ... (existing PII logic)
 
-                    trace = result.get('trace', [])
-                    pii_info = None
-                    for step in trace:
-                        if step.get('agent') == 'redactor':
-                            pii_info = step
-                            break
+                    # === 1. EXTRACTION ACCURACY ≥ 90% ===
+                    extraction = metrics_report['extraction_accuracy']
+                    st.markdown("#### 📋 Extraction Accuracy Target: ≥ 90%")
+                    st.markdown("*Key fields (exact/normalized match)*")
 
-                    if pii_info:
-                        pii_types = pii_info.get('pii_types_scrubbed', [])
-                        if pii_types:
-                            st.write(
-                                f"**PII Types Redacted:** {', '.join(pii_types)}")
+                    col1, col2 = st.columns([2, 1])
+                    with col1:
+                        val = extraction['overall_extraction_accuracy']
+                        st.metric(
+                            "Overall Extraction Accuracy",
+                            f"{val:.1f}%",
+                            delta=f"{val - extraction['target']:+.1f}%"
+                        )
+                    with col2:
+                        if extraction['meets_target']:
+                            st.success("✅ Target Met")
                         else:
-                            st.info("No PII detected/redacted")
-                else:
-                    st.info("Reporter metrics not available")
+                            st.error(f"❌ Below Target")
+
+                    st.markdown("---")
+
+                    # === 2. PII RECALL ≥ 95% | PRECISION ≥ 90% ===
+                    pii = metrics_report['pii_metrics']
+                    st.markdown(
+                        "#### 🔒 PII Redaction Targets: Recall ≥ 95% | Precision ≥ 90%")
+                    st.caption(
+                        "📊 Metrics calculated via automated PII detection (HIPAA Safe Harbor 18 PHI identifiers)")
+
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        recall = pii['avg_pii_recall']
+                        st.metric(
+                            "PII Recall",
+                            f"{recall:.1f}%",
+                            delta=f"{recall - pii['target_recall']:+.1f}%"
+                        )
+                        if pii['recall_meets_target']:
+                            st.success(
+                                f"✅ Target Met (≥ {pii['target_recall']}%)")
+                        else:
+                            st.error(
+                                f"❌ Below Target ({pii['target_recall']}%)")
+
+                    with col2:
+                        precision = pii['avg_pii_precision']
+                        st.metric(
+                            "PII Precision",
+                            f"{precision:.1f}%",
+                            delta=f"{precision - pii['target_precision']:+.1f}%"
+                        )
+                        if pii['precision_meets_target']:
+                            st.success(
+                                f"✅ Target Met (≥ {pii['target_precision']}%)")
+                        else:
+                            st.error(
+                                f"❌ Below Target ({pii['target_precision']}%)")
+
+                    st.markdown("---")
+
+                    # === 3. WORKFLOW SUCCESS ≥ 90% | P95 LATENCY ≤ 4s ===
+                    workflow = metrics_report['workflow_success']
+                    latency = metrics_report['latency']
+                    st.markdown(
+                        "#### ⚙️ Workflow Success ≥ 90% | P95 Latency ≤ 4s")
+                    st.markdown("*No manual intervention; text PDFs*")
+
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        success_rate = workflow['success_rate']
+                        st.metric(
+                            "Workflow Success Rate",
+                            f"{success_rate:.1f}%",
+                            delta=f"{success_rate - workflow['target']:+.1f}%"
+                        )
+                        if workflow['meets_target']:
+                            st.success(
+                                f"✅ Target Met (≥ {workflow['target']}%)")
+                        else:
+                            st.error(f"❌ Below Target ({workflow['target']}%)")
+
+                    with col2:
+                        if latency.get('note'):
+                            st.info(f"ℹ️ {latency['note']}")
+                        else:
+                            p95 = latency['p95_latency_ms']
+                            st.metric(
+                                "P95 Latency",
+                                f"{p95:.0f}ms ({p95/1000:.1f}s)",
+                                delta=f"{p95 - latency['target']:+.0f}ms"
+                            )
+                            if latency.get('meets_target'):
+                                st.success(
+                                    f"✅ Target Met (≤ {latency['target']}ms)")
+                            else:
+                                st.error(
+                                    f"❌ Above Target ({latency['target']}ms)")
+
+                except Exception as e:
+                    st.error(f"Error loading metrics: {str(e)}")
 
             with tab5:
                 st.markdown("### Agent Execution Trace")
@@ -1203,6 +1277,40 @@ if uploaded_file is not None:
                                     f"**Validation Flags:** {flags_count}")
                                 st.write(
                                     f"**Schema:** {step.get('schema', 'N/A')}")
+
+                            elif 'redactor' in agent_name:
+                                st.markdown("#### PII Detection & Redaction")
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    pii_detected = step.get('pii_detected', 0)
+                                    st.metric(
+                                        "PII Entities Detected",
+                                        pii_detected,
+                                        help="Automatically detected PII/PHI identifiers in document"
+                                    )
+                                with col2:
+                                    redaction_count = step.get(
+                                        'redaction_count', 0)
+                                    st.metric(
+                                        "Redactions Applied",
+                                        redaction_count,
+                                        help="Total PII instances redacted from text"
+                                    )
+
+                                pii_types = step.get('pii_types_scrubbed', [])
+                                if pii_types:
+                                    st.write(
+                                        f"**PII Types Found ({len(pii_types)}):**")
+                                    # Display as badges
+                                    pii_badges = " ".join(
+                                        [f"`{t}`" for t in pii_types])
+                                    st.markdown(pii_badges)
+                                else:
+                                    st.info("No PII detected in this document")
+
+                                # Show detection method
+                                st.caption(
+                                    "🤖 Automated detection using HIPAA Safe Harbor 18 PHI identifiers")
 
                             # Show full trace data
                             with st.expander("View Full Trace Data"):

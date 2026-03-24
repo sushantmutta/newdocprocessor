@@ -1,0 +1,41 @@
+HITL Test Cases - Changes Made
+==============================
+Date: 2026-03-15
+
+Summary
+-------
+Added a dedicated test-case bundle for validating production-grade HITL routing and review decisions.
+
+Created Folder
+--------------
+- data/hitl_test_cases/
+
+Created Files
+-------------
+- data/hitl_test_cases/01_unknown_doc_type.txt
+- data/hitl_test_cases/02_low_confidence_noisy_prescription.txt
+- data/hitl_test_cases/03_schema_validation_failure_lab.txt
+- data/hitl_test_cases/04_critical_flags_lab_extreme.txt
+- data/hitl_test_cases/05_repair_limit_exceeded_units.txt
+- data/hitl_test_cases/06_extraction_empty_like_scan_stub.txt
+- data/hitl_test_cases/07_fallback_trigger_candidate_prescription.txt
+- data/hitl_test_cases/08_human_override_candidate.txt
+- data/hitl_test_cases/README_TEST_MATRIX.txt
+
+What These Cover
+----------------
+- Unknown document classification trigger
+- Low confidence trigger
+- Schema validation failure trigger
+- High/Critical validation flags trigger
+- Repair-attempt threshold trigger
+- Near-empty extraction trigger
+- LLM fallback trigger
+- Human decision path testing (approve/reject/override/re_extract/escalate)
+
+Operational Notes
+-----------------
+- Use /process/with-review to exercise interrupt-based HITL behavior.
+- Use /review/pending to validate queue visibility.
+- For fallback tests, intentionally degrade primary model availability.
+- For repair-limit tests, ensure max_repair_attempts config is low enough to reproduce quickly.

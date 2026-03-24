@@ -1,6 +1,8 @@
 """
 Pytest configuration and fixtures for the Agentic Document Processor test suite.
 """
+from src.core.clients.llm_client import UnifiedLLMManager
+from src.core.state import DocState
 import pytest
 import os
 import sys
@@ -9,9 +11,6 @@ from pathlib import Path
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
-
-from app.state import DocState
-from app.llm_client import UnifiedLLMManager
 
 
 @pytest.fixture
@@ -117,7 +116,7 @@ def mock_llm_response():
     class MockResponse:
         def __init__(self, content):
             self.content = content
-    
+
     return MockResponse
 
 
@@ -167,12 +166,17 @@ def setup_test_environment():
 # Markers for different test categories
 def pytest_configure(config):
     """Configure custom pytest markers."""
-    config.addinivalue_line("markers", "unit: Unit tests for individual components")
-    config.addinivalue_line("markers", "integration: Integration tests for full pipeline")
-    config.addinivalue_line("markers", "performance: Performance and latency tests")
-    config.addinivalue_line("markers", "edge_case: Edge case and error handling tests")
+    config.addinivalue_line(
+        "markers", "unit: Unit tests for individual components")
+    config.addinivalue_line(
+        "markers", "integration: Integration tests for full pipeline")
+    config.addinivalue_line(
+        "markers", "performance: Performance and latency tests")
+    config.addinivalue_line(
+        "markers", "edge_case: Edge case and error handling tests")
     config.addinivalue_line("markers", "pii: PII redaction tests")
-    config.addinivalue_line("markers", "validation: Validation and schema tests")
+    config.addinivalue_line(
+        "markers", "validation: Validation and schema tests")
     config.addinivalue_line("markers", "slow: Slow-running tests")
     config.addinivalue_line("markers", "bedrock: Tests requiring AWS Bedrock")
     config.addinivalue_line("markers", "groq: Tests requiring Groq API")

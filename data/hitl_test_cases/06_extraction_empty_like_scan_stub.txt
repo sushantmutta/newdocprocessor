@@ -1,0 +1,17 @@
+SCANNED MEDICAL FORM
+[Image-only document placeholder]
+
+### OCR OUTPUT ###
+
+
+
+
+
+
+
+
+
+
+(no readable text detected)
+
+Expected HITL Trigger: extraction_empty == True (near-empty extraction or missing critical fields).

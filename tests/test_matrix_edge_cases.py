@@ -1,16 +1,16 @@
 import pytest
 from unittest.mock import Mock, patch
-from app.state import DocState
-from app.agents.classifier import classify_doc
-from app.agents.extractor import extract_data
-from app.agents.validator import validate_data
+from src.core.state import DocState
+from src.core.agents.classifier import classify_doc
+from src.core.agents.extractor import extract_data
+from src.core.agents.validator import validate_data
 import json
 
 
 @pytest.fixture
 def mock_llm():
-    with patch('app.agents.classifier.UnifiedLLMManager') as m1, \
-            patch('app.agents.extractor.UnifiedLLMManager') as m2:
+    with patch('src.core.agents.classifier.UnifiedLLMManager') as m1, \
+            patch('src.core.agents.extractor.UnifiedLLMManager') as m2:
         mock_instance = Mock()
         mock_instance.provider = "groq"
         m1.return_value = mock_instance
@@ -117,8 +117,12 @@ class TestMatrixEdgeCases:
         state = extract_data(state)
         state = validate_data(state)
         flags = [f["code"] for f in state["validation_flags"]]
-        # Note: "liters" is rejected by Pydantic validator as invalid unit, creating INVALID_MEDICATIONS flag
-        assert "INVALID_MEDICATIONS" in flags or "NON_STANDARD_UNIT" in flags
+        # Validator may emit either high-level medication error or specific unit error.
+        assert (
+            "INVALID_MEDICATIONS" in flags
+            or "NON_STANDARD_UNIT" in flags
+            or "INVALID_DOSAGE_UNIT" in flags
+        )
 
     def test_missing_dosage_alert(self, mock_llm):
         """Verify alert for missing medication dosage."""

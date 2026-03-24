@@ -1,0 +1,24 @@
+[
+    {
+        "name": "hemoglobin",
+        "units": [
+            "g/dl"
+        ],
+        "reference_range": "12.0-18.0"
+    },
+    {
+        "name": "glucose",
+        "units": [
+            "mg/dl",
+            "mmol/l"
+        ],
+        "reference_range": "70-100"
+    },
+    {
+        "name": "potassium",
+        "units": [
+            "mmol/l"
+        ],
+        "reference_range": "3.5-5.0"
+    }
+]

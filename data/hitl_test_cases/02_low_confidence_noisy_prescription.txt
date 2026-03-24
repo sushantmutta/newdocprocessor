@@ -1,0 +1,17 @@
+PRE$CRI?TION FRAGMNT
+D0c: blurred OCR copy
+
+Dr ??? Sharma lic ??-??
+Pt: R..n M...n
+Age: 4?
+
+Meds maybe:
+- Amox... 5?? mg ?x daily
+- Parace... ???
+- (illegible) syrup ??? ml
+
+Date maybe 2O26/13/44
+Follow up ???
+
+Most fields are partially corrupted by OCR noise.
+Expected HITL Trigger: confidence_score below threshold (confidence_gate).

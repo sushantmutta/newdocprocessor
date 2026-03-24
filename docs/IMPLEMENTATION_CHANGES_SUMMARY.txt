@@ -1,0 +1,117 @@
+Implementation Changes Summary
+==============================
+
+Date: 2026-03-16
+Scope: Supervisor orchestration completion, knowledge lookup, Responsible AI logging hardening,
+       tracing standardization, auditability, and test completion.
+
+1) Supervisor-Oriented Orchestration
+------------------------------------
+Updated the pipeline to keep supervisor decisions as the canonical routing mechanism while preserving
+existing HITL behavior.
+
+Changed files:
+- src/core/graph.py
+- src/core/agents/supervisor.py
+
+What changed:
+- Added/retained supervisor-first flow with post-validator supervisor decision point.
+- Integrated knowledge conflict awareness into supervisor review triggers.
+- Preserved previous review and interrupt behavior while extending decision inputs.
+
+2) Knowledge Lookup (Feature-Flagged)
+-------------------------------------
+Added exact-match knowledge lookup between validation and final supervisor decision.
+
+Changed files:
+- config/settings.py
+- src/core/state.py
+- src/core/graph.py
+- src/core/knowledge/__init__.py
+- src/core/knowledge/knowledge_store.py
+- src/core/agents/knowledge_agent.py
+- data/knowledge/drugs.json
+- data/knowledge/lab_tests.json
+- data/knowledge/drug_aliases.csv
+
+What changed:
+- Added setting: ENABLE_KNOWLEDGE_LOOKUP (default false).
+- Added setting: knowledge_dir (data/knowledge).
+- Added state fields: knowledge_hits, knowledge_conflicts, knowledge_recommendations.
+- Added curated exact-lookup store (JSON/CSV loading, normalization, aliases).
+- Added knowledge agent node to compare extracted data to curated references.
+- Added knowledge mismatch signal that can trigger human review via supervisor.
+
+3) Tracing Standardization
+--------------------------
+Implemented standardized trace events with correlation and timing metadata.
+
+Changed files:
+- src/core/state.py
+- src/core/graph.py
+- src/core/agents/supervisor.py
+- src/core/utils/trace_schema.py
+- src/core/utils/trace_utils.py
+
+What changed:
+- Added state fields: trace_correlation_id, trace_events.
+- Added TraceEvent schema to normalize event structure.
+- Added helper utilities for correlation-id, event hashing, and timed node calls.
+- Wrapped major graph steps with consistent event capture.
+
+4) Responsible AI Logging and Audit Persistence
+------------------------------------------------
+Hardened persistence for agent traces and human decisions with retrieval APIs.
+
+Changed file:
+- src/api/main.py
+
+What changed:
+- Added SQLite table: agent_trace_events.
+- Added SQLite table: human_decisions_audit.
+- Added persistence helpers for standardized trace events.
+- Added persistence helpers for human decision audit entries.
+- Added read APIs:
+  - GET /trace/{thread_id}
+  - GET /audit/{thread_id}
+- Ensured process/review/timeout flows persist trace + audit records.
+
+5) Backward Compatibility / Reporting Stability
+------------------------------------------------
+Ensured report artifacts remain available in both configured and legacy locations.
+
+Changed file:
+- src/core/agents/reporter.py
+
+What changed:
+- Reporter now writes trace and metrics outputs to:
+  - configured reports directory (settings)
+  - legacy root reports directory (for compatibility with existing flows/tests)
+
+6) Test Coverage Added/Updated
+------------------------------
+Added and updated tests for new functionality and branch coverage.
+
+Added test files:
+- tests/test_knowledge_store.py
+- tests/test_knowledge_agent.py
+- tests/test_supervisor_knowledge_triggers.py
+- tests/test_api_trace_audit_and_timeout.py
+
+Updated test files:
+- tests/test_matrix_edge_cases.py
+
+Validation result:
+- Full test suite executed successfully.
+- Result: 46 passed, 0 failed.
+
+7) Configuration Notes
+----------------------
+- Knowledge lookup is disabled by default.
+- To enable knowledge lookup, set environment variable:
+  ENABLE_KNOWLEDGE_LOOKUP=true
+
+- Knowledge data expected under:
+  data/knowledge/
+
+End of summary.

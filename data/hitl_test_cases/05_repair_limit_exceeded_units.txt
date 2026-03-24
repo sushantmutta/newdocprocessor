@@ -1,0 +1,18 @@
+PRESCRIPTION
+Date: 2026-03-12
+Doctor: Dr. Karan Sethi
+License: MH-112344
+Patient: Manya Kulkarni
+Patient ID: PT773421
+Age: 39
+
+Diagnosis: Hypertension, Diabetes Mellitus Type 2
+
+Medications:
+1. Metformin          500 liters      twice daily
+2. Amlodipine         5 kilograms     once daily
+3. Atorvastatin       10 centimeters  at bedtime
+4. Aspirin            75 liters       once daily
+
+Notes: Units may require multiple repair attempts due to repeated malformed values.
+Expected HITL Trigger: repair_attempts >= max_repair_attempts (after loop exhaustion).

@@ -1,21 +1,21 @@
 import pytest
 from unittest.mock import Mock, patch
-from app.state import DocState
-from app.agents.classifier import classify_doc
-from app.agents.extractor import extract_data
-from app.agents.validator import validate_data
-from app.agents.redactor import redact_pii
-from app.agents.reporter import generate_report
+from src.core.state import DocState
+from src.core.agents.classifier import classify_doc
+from src.core.agents.extractor import extract_data
+from src.core.agents.validator import validate_data
+from src.core.agents.redactor import redact_pii
+from src.core.agents.reporter import generate_report
 import json
 
 
 @pytest.fixture
 def mock_llm():
     # Patch the class in all modules where it's imported
-    with patch('app.agents.classifier.UnifiedLLMManager') as m1, \
-            patch('app.agents.extractor.UnifiedLLMManager') as m2, \
-            patch('app.agents.redactor.UnifiedLLMManager') as m3, \
-            patch('app.agents.repair.UnifiedLLMManager') as m4:
+    with patch('src.core.agents.classifier.UnifiedLLMManager') as m1, \
+            patch('src.core.agents.extractor.UnifiedLLMManager') as m2, \
+            patch('src.core.agents.redactor.UnifiedLLMManager') as m3, \
+            patch('src.core.agents.repair.UnifiedLLMManager') as m4:
         mock_instance = Mock()
         # Ensure metadata values are strings to avoid JSON serialization errors
         mock_instance.provider_name = "groq"
@@ -40,6 +40,7 @@ class TestE2EScenarios:
                 "document_type": "PRESCRIPTION",
                 "confidence_score": 0.95,
                 "data": {
+                    "date": "2024-03-20",
                     "doctor": {"name": "Dr. Smith", "license_number": "MH-12345"},
                     "patient": {"name": "John Doe", "age": 45, "gender": "Male"},
                     "medications": [{"name": "Amoxicillin", "dosage": "500mg", "frequency": "BID", "duration": "7 days"}]
@@ -321,7 +322,7 @@ class TestE2EScenarios:
                    "NON_STANDARD_UNIT", "INVALID_DOSAGE_UNIT"])
 
         # Import repair functions
-        from app.agents.repair import repair_data, should_repair
+        from src.core.agents.repair import repair_data, should_repair
 
         # Check if repair is needed
         assert should_repair(state) == "repair"
@@ -338,7 +339,7 @@ class TestE2EScenarios:
 
     def test_repair_max_attempts(self, mock_llm):
         """Test that repair agent aborts after max attempts."""
-        from app.agents.repair import repair_data
+        from src.core.agents.repair import repair_data
 
         mock_llm.invoke_with_fallback.return_value = Mock(
             content=json.dumps({
@@ -355,6 +356,7 @@ class TestE2EScenarios:
             validated_data=None,
             validation_flags=[
                 {"code": "NON_STANDARD_UNIT", "severity": "MEDIUM"}],
+            repair_flag_attempts={"NON_STANDARD_UNIT": 3},
             redacted_text=None,
             trace_log=[],
             errors=[],
@@ -366,14 +368,13 @@ class TestE2EScenarios:
             start_time=None
         )
 
-        # Should skip repair due to max attempts
+        # Should skip repair due to per-flag max attempts exhaustion
         state = repair_data(state)
-        assert "Maximum repair attempts" in state["errors"][-1]
-        assert any(log["action"] == "abort" for log in state["trace_log"])
+        assert any(log.get("action") == "skip" for log in state["trace_log"])
 
     def test_no_repair_needed(self, mock_llm):
         """Test that repair is skipped when no unit errors exist."""
-        from app.agents.repair import repair_data, should_repair
+        from src.core.agents.repair import repair_data, should_repair
 
         state = DocState(
             raw_text="Test doc",

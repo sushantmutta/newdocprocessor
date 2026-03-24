@@ -1,0 +1,17 @@
+PRESCRIPTION
+Date: 2026-03-13
+Doctor: Dr. Isha Menon
+License: KA-558901
+Patient: Nikhil Arora
+Patient ID: PT901122
+Age: 44
+
+Diagnosis: Acute Sinusitis
+
+Medications:
+1. Amoxicillin-Clavulanate 625 mg   twice daily for 5 days
+2. Levocetirizine 5 mg              once daily at bedtime
+
+Execution note:
+- Run this case with primary LLM intentionally unavailable or throttled.
+- Expected HITL Trigger: llm_fallback_used == True routes to human_review.

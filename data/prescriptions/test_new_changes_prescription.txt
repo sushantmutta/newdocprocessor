@@ -1,0 +1,18 @@
+PRESCRIPTION
+Date: 2026-03-16
+Doctor: Dr. Priya Sharma, MD-44521
+Patient: Rohan Patel, Age 67
+Diagnosis: Type 2 Diabetes, Hypertension
+
+Medications:
+1) Metformin 500 mg, oral, twice daily after meals
+2) Lisinopril 10 mg, oral, once daily
+3) Aspirin 81 mg, oral, once daily
+
+Clinical Notes:
+- Monitor fasting glucose weekly.
+- Follow-up in 4 weeks.
+- Check kidney function (serum creatinine) at next visit.
+
+Allergies:
+- Penicillin

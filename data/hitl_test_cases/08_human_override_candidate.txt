@@ -1,0 +1,19 @@
+PRESCRIPTION
+Date: 2026-03-14
+Doctor: Dr. Alok Verma
+License: DL-332218
+Patient: Ritu Sinha
+Patient ID: PT455882
+Age: 31
+
+Diagnosis: Acute Bronchitis
+
+Medications:
+1. Azithromycin      500 liters    once daily for 3 days
+2. Ambroxol syrup    30 kg         three times daily
+3. Paracetamol       650 cm        as needed
+
+Expected Use:
+- Trigger human_review.
+- Test override/reject/approve decision APIs.
+- Useful for partial override merge testing.

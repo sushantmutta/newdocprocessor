@@ -1,0 +1,110 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentic-doc-processor"
+version = "1.0.0"
+description = "Agentic medical document intelligence pipeline powered by LangGraph and AWS Bedrock"
+readme = "docs/README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "Your Name", email = "your.email@example.com"}
+]
+keywords = ["langgraph", "ai", "document-processing", "medical", "bedrock", "aws"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "langgraph",
+    "langgraph-cli[inmem]",
+    "langchain",
+    "langchain-community",
+    "langchain-core",
+    "langchain-text-splitters",
+    "langchain-aws",
+    "langchain-groq",
+    "langchain-ollama",
+    "boto3",
+    "pandas",
+    "tenacity",
+    "regex",
+    "python-dotenv",
+    "faiss-cpu",
+    "fastapi",
+    "uvicorn[standard]",
+    "python-multipart",
+    "pytest",
+    "pypdf",
+    "pytesseract",
+    "streamlit",
+    "requests",
+    "sseclient-py",
+    "flowise",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "black",
+    "flake8",
+    "mypy",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/agentic-doc-processor"
+Documentation = "https://github.com/yourusername/agentic-doc-processor/blob/main/docs/README.md"
+Repository = "https://github.com/yourusername/agentic-doc-processor"
+
+[project.scripts]
+doc-processor = "src.api.main:api"
+
+[tool.setuptools]
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --strict-markers"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+]
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true

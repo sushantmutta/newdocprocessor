@@ -1,0 +1,51 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	initialize(initialize)
+	pre_supervisor(pre_supervisor)
+	classifier(classifier)
+	post_classifier_supervisor(post_classifier_supervisor)
+	extractor(extractor)
+	post_extractor_supervisor(post_extractor_supervisor)
+	validator(validator)
+	knowledge_lookup(knowledge_lookup)
+	post_validator_supervisor(post_validator_supervisor)
+	human_review(human_review)
+	abort(abort)
+	repair(repair)
+	redactor(redactor)
+	reporter(reporter)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> initialize;
+	initialize --> pre_supervisor;
+	pre_supervisor --> classifier;
+	classifier --> post_classifier_supervisor;
+	post_classifier_supervisor -.-> extractor;
+	post_classifier_supervisor -.-> human_review;
+	post_classifier_supervisor -.-> redactor;
+	post_classifier_supervisor -.-> abort;
+	extractor --> post_extractor_supervisor;
+	post_extractor_supervisor -.-> validator;
+	post_extractor_supervisor -.-> human_review;
+	post_extractor_supervisor -.-> abort;
+	validator --> knowledge_lookup;
+	knowledge_lookup --> post_validator_supervisor;
+	post_validator_supervisor -.-> repair;
+	post_validator_supervisor -.-> human_review;
+	post_validator_supervisor -.-> redactor;
+	post_validator_supervisor -.-> abort;
+	human_review -.-> repair;
+	human_review -.-> redactor;
+	human_review -.-> validator;
+	human_review -.-> extractor;
+	abort --> reporter;
+	repair --> redactor;
+	redactor --> reporter;
+	reporter --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

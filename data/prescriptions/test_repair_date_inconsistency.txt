@@ -1,0 +1,33 @@
+PRESCRIPTION
+============================
+Date: 15/03/2026
+
+Doctor: Dr. Arun Joshi
+Clinic: Apollo Health, 88 Ring Road, Bangalore - 560034
+License: KA-MED-77342
+
+Patient: Priya Kapoor
+DOB: 19-07-1990
+Patient ID: PT-BLR-44291
+
+Diagnosis: Migraine, Anxiety Disorder
+
+Medications:
+1. Sumatriptan      50 mg     as needed (max 2 per 24 hrs)
+2. Propranolol      40 mg     twice daily
+3. Alprazolam       0.5 mg    once daily at bedtime
+4. Vitamin B12      500 mcg   once daily morning
+
+Inconsistency Note:
+- Propranolol 40 mg twice daily is prescribed, but the diagnosis notes
+  mention "40 liters twice daily" in the clinical summary section —
+  this is a transcription unit error that should be corrected to mg.
+
+Instructions:
+- Avoid alcohol with Alprazolam
+- Do not stop Propranolol abruptly
+- Follow up in 2 weeks
+
+Dr. Arun Joshi
+MD (Neurology), DM
+Reg No: KA-MED-77342

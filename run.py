@@ -196,14 +196,14 @@ def main():
     if services['api']:
         start_service(
             "FastAPI Server",
-            "python -m uvicorn api:api --host 127.0.0.1 --port 8000",
+            "python -m uvicorn src.api.main:api --host 127.0.0.1 --port 8000",
             8000
         )
 
     if services['streamlit']:
         start_service(
             "Streamlit UI",
-            "streamlit run streamlit_app.py",
+            "python -m streamlit run src/ui/app.py --server.address 127.0.0.1 --server.port 8501",
             8501
         )
 

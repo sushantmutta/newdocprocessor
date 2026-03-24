@@ -1,13 +1,13 @@
 import pytest
 from unittest.mock import Mock, patch
-from app.agents.classifier import classify_doc
-from app.agents.validator import validate_data
-from app.state import DocState
+from src.core.agents.classifier import classify_doc
+from src.core.agents.validator import validate_data
+from src.core.state import DocState
 
 
 @pytest.fixture
 def mock_llm():
-    with patch('app.agents.classifier.UnifiedLLMManager') as mock:
+    with patch('src.core.agents.classifier.UnifiedLLMManager') as mock:
         yield mock
 
 

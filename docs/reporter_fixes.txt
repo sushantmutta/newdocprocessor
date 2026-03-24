@@ -1,0 +1,141 @@
+Reporter Agent Bug Fixes — src/core/agents/reporter.py
+Date: 2026-03-12
+========================================================
+
+BUG 1 — WRONG SAVE DIRECTORY (HIGH)
+-------------------------------------
+Problem:
+  The path was computed using os.path.dirname(__file__) traversal:
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    reports_dir = os.path.join(base_dir, "reports")
+  __file__ = src/core/agents/reporter.py → going up 3 levels gives src/, not project root.
+  This caused all reports to be saved to src/reports/ instead of data/reports/.
+  config/settings.py already defined the correct path (PROJECT_ROOT / "data" / "reports")
+  via get_reports_dir() but reporter.py never imported it.
+  Result: Two diverging metrics_report.csv files — UI/dashboard showed stale data.
+
+Fix:
+  Removed the __file__ traversal entirely.
+  Added: from config.settings import get_reports_dir
+  Changed: reports_dir = str(get_reports_dir())
+
+
+BUG 2 — EXTRACTION COMPLETENESS EXCEEDS 100% (MEDIUM)
+-------------------------------------------------------
+Problem:
+  The code flattened the entire extracted_data dict recursively, counting every nested
+  leaf value (e.g. doctor.name, doctor.license_number, patient.age, etc.) against
+  EXPECTED_FIELDS["prescription"] = 5.
+  A prescription produces ~10 leaf values → extraction_completeness showed 200.00%.
+  This made the metric meaningless.
+
+Fix:
+  Changed to count only top-level keys with non-empty values:
+    extracted_count = len([v for v in extracted_data.values()
+                           if v is not None and v != [] and v != {}])
+  Added a cap: extraction_completeness = min(extraction_completeness, 100.0)
+
+
+BUG 3 — TWO DIVERGING metrics_report.csv FILES (HIGH)
+------------------------------------------------------
+Problem:
+  Direct consequence of Bug 1. Every run since the app started writing to
+  src/reports/metrics_report.csv while data/reports/metrics_report.csv stopped
+  being updated after February 2026.
+
+Fix:
+  Fixed by Bug 1 fix. All writes now go to data/reports/metrics_report.csv.
+
+
+BUG 4 — CSV HEADER WRITTEN MULTIPLE TIMES UNDER CONCURRENT REQUESTS (MEDIUM)
+------------------------------------------------------------------------------
+Problem:
+  The header guard used:
+    file_exists = os.path.isfile(metrics_csv_path)
+    ...
+    if not file_exists: writer.writeheader()
+  Under concurrent requests, two threads can both read file_exists=False before
+  either writes the header, resulting in duplicate header rows in the CSV.
+  This breaks Pandas reads and any CSV tooling.
+
+Fix:
+  Replaced the os.path.isfile() check with a file-position check after opening:
+    write_header = csvfile.tell() == 0
+  tell()==0 is True only when the file cursor is at the start (new/empty file),
+  which is evaluated after the OS has given us exclusive access to the file handle.
+
+
+BUG 5 — JSON DUMP CRASHES ON NON-SERIALIZABLE TYPES (HIGH)
+-----------------------------------------------------------
+Problem:
+  json.dump(report, f, indent=4) had no default= handler.
+  If extracted_data or validated_data contained datetime objects, Pydantic Decimal
+  types, or Path objects (possible from schema validation), this raised TypeError
+  and the trace file was never written — with no caught exception, the whole
+  pipeline crashed at the reporter step.
+
+Fix:
+  Added a safe serializer function:
+    def _json_default(obj):
+        if hasattr(obj, "isoformat"):   # datetime
+            return obj.isoformat()
+        return str(obj)                 # Path, Decimal, etc.
+  Changed: json.dump(report, f, indent=4, default=_json_default)
+  Wrapped in try/except to log failure without crashing the pipeline.
+
+
+BUG 6 — LATENCY RECORDED AS N/A FOR NON-API INVOCATIONS (LOW)
+---------------------------------------------------------------
+Problem:
+  start_time was only set in the POST /process API handler.
+  Direct graph invocations, test scripts, and the app_with_review path never set it.
+  This caused latency_ms = None → "N/A" in CSV for those runs.
+
+Fix:
+  Added a guard at the top of generate_report():
+    if not state.get("start_time"):
+        state["start_time"] = time.time()
+  Latency for these runs will be only the reporter's own execution time,
+  but it is always a real number rather than N/A.
+  Removed the conditional latency calculation — latency_ms is now always computed.
+
+
+BUG 7 — FABRICATED PII METRICS WHEN DETECTION FAILS (MEDIUM)
+-------------------------------------------------------------
+Problem:
+  When detected_pii was empty, the code computed:
+    pii_recall = min(redaction_coverage * 15, 100.0)
+    pii_precision = min(95.0 + (redaction_coverage * 0.5), 100.0)
+  This produced made-up numbers (e.g. 100.00% recall) that looked real in the CSV.
+  The code itself had a comment: "NOT RELIABLE".
+  The same fake values were passed to csv.DictWriter, hiding PII detection failures.
+
+Fix:
+  Set pii_recall = None and pii_precision = None when no PII data is available.
+  CSV writes "N/A" for both columns in that case.
+  Added a print statement to clearly surface when metrics are unavailable.
+
+
+BUG 8 — import csv INSIDE FUNCTION BODY (LOW)
+----------------------------------------------
+Problem:
+  import csv was placed inside generate_report() at line ~330.
+  While Python caches imports (no performance cost), it is non-standard,
+  confuses linters/type checkers, and makes it easy to miss the dependency.
+
+Fix:
+  Moved import csv to the top of the file with all other standard library imports.
+
+
+FILES CHANGED
+-------------
+  src/core/agents/reporter.py   — all 8 fixes applied
+
+IMPORTS ADDED
+-------------
+  csv                           (moved from inside function to top-level)
+  config.settings.get_reports_dir  (replaces __file__ path traversal)
+
+IMPORTS REMOVED
+---------------
+  None (os, re, time, json, typing all retained)

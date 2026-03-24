@@ -2,8 +2,9 @@ import pytest
 import os
 import csv
 import json
-from app.agents.reporter import generate_report
-from app.state import DocState
+from src.core.agents.reporter import generate_report
+from src.core.state import DocState
+
 
 class TestReporterAgent:
     def test_generate_csv_metrics(self, tmp_path):
@@ -12,11 +13,11 @@ class TestReporterAgent:
         reports_dir = os.path.join(base_dir, "reports")
         os.makedirs(reports_dir, exist_ok=True)
         csv_path = os.path.join(reports_dir, "metrics_report.csv")
-        
+
         # Clean up previous csv if exists
         if os.path.exists(csv_path):
             os.remove(csv_path)
-            
+
         state = DocState(
             doc_type="prescription",
             file_path="test_rx.pdf",
@@ -28,11 +29,11 @@ class TestReporterAgent:
             raw_text="Dr. House wrote a script.",
             repair_attempts=0
         )
-        
+
         new_state = generate_report(state)
-        
+
         assert os.path.exists(csv_path)
-        
+
         with open(csv_path, "r", newline="") as f:
             reader = csv.DictReader(f)
             rows = list(reader)
@@ -43,7 +44,7 @@ class TestReporterAgent:
     def test_generate_json_trace(self):
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         reports_dir = os.path.join(base_dir, "reports")
-        
+
         state = DocState(
             doc_type="lab_report",
             file_path="test_lab.pdf",
@@ -55,11 +56,12 @@ class TestReporterAgent:
             raw_text="Lab report content",
             repair_attempts=0
         )
-        
+
         new_state = generate_report(state)
-        
+
         # Verify JSON file creation
         # Since filename has timestamp, we check directory for recent file
         files = os.listdir(reports_dir)
-        json_files = [f for f in files if f.startswith("trace_lab_report_") and f.endswith(".json")]
+        json_files = [f for f in files if f.startswith(
+            "trace_lab_report_") and f.endswith(".json")]
         assert len(json_files) > 0

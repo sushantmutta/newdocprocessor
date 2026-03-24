@@ -1,6 +1,6 @@
 import pytest
-from app.schemas.prescription_schema import PrescriptionSchema, Medication, DoctorInfo, PatientInfo
-from app.schemas.lab_report_schema import LabReportSchema, LabInfo, TestResult
+from src.core.schemas.prescription_schema import PrescriptionSchema, Medication, DoctorInfo, PatientInfo
+from src.core.schemas.lab_report_schema import LabReportSchema, LabInfo, TestResult
 from pydantic import ValidationError
 
 # --- Prescription Schema Tests ---

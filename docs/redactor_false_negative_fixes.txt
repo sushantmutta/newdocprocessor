@@ -1,0 +1,113 @@
+Redactor False-Negative Warning Fixes — src/core/agents/redactor.py
+Date: 2026-03-12
+=====================================================================
+
+PROBLEM
+-------
+Terminal showed:
+  ⚠️  Failed to redact: NAME = 'Dr. Kavita Desai'
+
+But the final redacted text was correct — "Dr. Kavita Desai" was actually
+redacted. The warning was a false negative (spurious alarm).
+
+ROOT CAUSE
+----------
+The LLM's Phase 1 detection can return the same name in multiple entities:
+  e.g., once as "doctor_name" and again as "signature_name"
+
+Or a name can be embedded inside a longer ADDRESS/CLINIC entity processed
+earlier in the loop:
+  { "type": "ADDRESS", "value": "Clinic of Dr. Kavita Desai, Mumbai" }  ← consumed the name
+  { "type": "NAME",    "value": "Dr. Kavita Desai" }                    ← name already gone
+
+When the 2nd iteration ran Strategy 1, the text was already "[NAME_REDACTED]"
+so no match was found. All 4 strategies failed, and the warning fired —
+even though the redaction had already happened correctly.
+
+No pre-check or post-check existed to detect this "already consumed" state.
+
+======================================================================
+CHANGES MADE
+======================================================================
+
+FILE: src/core/agents/redactor.py
+
+FIX 1 — Pre-loop already-consumed skip (inside Phase 2 loop)
+  Location: Top of the per-entity loop, after pii_value is resolved
+  Before:
+    if not pii_value:
+        continue
+    redaction_tag = ...
+  After:
+    if not pii_value:
+        continue
+    # Skip if value was already consumed by a prior iteration
+    if not re.search(re.escape(pii_value), redacted_text, re.IGNORECASE):
+        continue
+    redaction_tag = ...
+
+  Effect: If the normalised pii_value is no longer present in redacted_text
+  (because an earlier iteration already replaced it), the loop skips this
+  entity entirely without running any strategy or printing any warning.
+  This is the primary fix that silences the false alarm.
+
+FIX 2 — Post-strategies genuine-miss check (replaces the warning block)
+  Location: The `if not successfully_redacted:` block at the bottom of the loop
+  Before:
+    if not successfully_redacted:
+        display_value = pii_value[:80] + ("..." if len(pii_value) > 80 else "")
+        print(f"  ⚠️  Failed to redact: {pii_type} = '{display_value}'")
+  After:
+    if not successfully_redacted:
+        # Final presence check — value may have been consumed by a broader
+        # token-pattern match or an earlier overlapping entity
+        if re.search(re.escape(pii_value), redacted_text, re.IGNORECASE):
+            # Still present in text AND all strategies failed — genuine miss
+            display_value = pii_value[:80] + ("..." if len(pii_value) > 80 else "")
+            print(f"  ⚠️  Failed to redact: {pii_type} = '{display_value}'")
+
+  Effect: Even if Fix 1 somehow lets a consumed value through (e.g., a
+  token-pattern match replaced a superset string), the warning only fires
+  if the exact pii_value is still detectable in the text. Silent otherwise.
+
+FIX 3 — Deduplicate detected_pii after Phase 1 parsing
+  Location: Inside the Phase 1 try block, after the non-list wrapping check
+  Added:
+    seen_keys: set = set()
+    deduped: list = []
+    for _entity in detected_pii:
+        _key = (
+            _entity.get("type", "").upper(),
+            _normalize_pii_value(str(_entity.get("value", ""))).lower()
+        )
+        if _key not in seen_keys:
+            seen_keys.add(_key)
+            deduped.append(_entity)
+    detected_pii = deduped
+
+  Deduplication key: (normalised_type, normalised_value) — case-insensitive,
+  title-collapsed. Preserves the first occurrence (and its category metadata).
+
+  Effect: Duplicate LLM detections for the same person/entity never enter
+  Phase 2 at all. Fewer loop iterations, zero redundant strategy runs.
+
+VALIDATION
+----------
+Command:
+  python -c "from src.core.agents.redactor import redact_pii, _normalize_pii_value; print('redactor.py imports OK')"
+Output:
+  redactor.py imports OK
+
+EXPECTED OUTCOME
+----------------
+  Before fixes:
+    Phase 2: Redacting PII...
+    ⚠️  Failed to redact: NAME = 'Dr. Kavita Desai'    ← false alarm
+    ✓ Redacted 7 PII instances across 4 types
+
+  After fixes:
+    Phase 2: Redacting PII...
+    ✓ Redacted 7 PII instances across 4 types           ← clean output
+
+The warning will now only appear for genuine, unresolvable miss cases where
+the PII value is verifiably still present in the text after all four strategies.

@@ -1,0 +1,1077 @@
+===============================================================================
+MEDICAL DOCUMENT PROCESSOR - QUESTIONS & ANSWERS WITH BASICS
+===============================================================================
+
+This file contains fundamental questions and detailed answers about the 
+Medical Document Intelligence Pipeline codebase to help you understand 
+the project from scratch.
+
+===============================================================================
+SECTION 1: PROJECT BASICS
+===============================================================================
+
+Q1: What is this project?
+--------------------------
+A: This is a Medical Document Intelligence Pipeline that processes healthcare 
+documents (prescriptions, lab reports, invoices, ID cards) using AI agents. 
+It validates AI-generated medical documents to ensure accuracy, safety, and 
+HIPAA compliance before they reach patients.
+
+EXPLANATION:
+Think of it as a "quality control inspector" for AI-generated medical 
+documents. Just like a factory has quality inspectors checking products 
+before shipping, this system checks AI-generated medical documents for 
+errors, missing information, and privacy violations.
+
+
+Q2: Why is this project needed?
+--------------------------------
+A: AI agents in healthcare can make critical mistakes like hallucinating 
+dosages, exposing patient data, or generating invalid medical information. 
+This project acts as a validation layer to catch these errors before 
+documents reach patients.
+
+EXPLANATION:
+Imagine an AI prescribes 1000mg of a drug when the safe dose is 100mg - 
+this could harm or kill a patient. Or imagine an AI accidentally includes 
+a patient's social security number in a report. This system catches such 
+errors automatically.
+
+
+Q3: What types of documents does it process?
+---------------------------------------------
+A: The system handles four main document types:
+1. PRESCRIPTIONS - Medication orders with dosage, doctor info, DEA numbers
+2. LAB REPORTS - Medical test results with patient data, pathologist signatures
+3. INVOICES - Medical billing documents with costs and services
+4. ID CARDS - Patient or provider identification documents
+
+EXPLANATION:
+Each document type has different validation rules. For example, prescriptions 
+must have valid DEA numbers (Drug Enforcement Administration license for 
+prescribing controlled substances), while lab reports need pathologist 
+signatures.
+
+
+Q4: What is an "agentic pipeline"?
+-----------------------------------
+A: An agentic pipeline is a workflow where multiple specialized AI "agents" 
+work together, each handling a specific task, passing results to the next 
+agent in sequence.
+
+EXPLANATION:
+Think of an assembly line:
+- Agent 1 (Classifier): "What type of document is this?"
+- Agent 2 (Extractor): "Pull out the important data"
+- Agent 3 (Validator): "Check if the data is correct"
+- Agent 4 (Repair): "Fix any errors found"
+- Agent 5 (Redactor): "Remove private information"
+- Agent 6 (Reporter): "Summarize everything"
+
+Each agent is a specialist, like having different doctors for different tasks.
+
+
+===============================================================================
+SECTION 2: ARCHITECTURE & TECHNOLOGY
+===============================================================================
+
+Q5: What is LangGraph and why is it used?
+------------------------------------------
+A: LangGraph is a framework for building multi-agent workflows with state 
+management. It orchestrates how agents communicate and pass data between 
+each other.
+
+EXPLANATION:
+LangGraph is like a "traffic controller" for your AI agents. It:
+- Defines the order agents execute (workflow)
+- Manages data flow between agents (state management)
+- Handles conditional routing (if prescription → validate differently)
+- Provides checkpoints to pause/resume workflows
+- Enables human-in-the-loop interventions
+
+Example: After the validator finds errors, LangGraph routes to the repair 
+agent instead of moving forward.
+
+
+Q6: What is the "state" in this pipeline?
+------------------------------------------
+A: The state (DocState) is a shared data structure that all agents can read 
+from and write to as the document moves through the pipeline.
+
+EXPLANATION:
+Imagine a medical chart that follows a patient through the hospital. Each 
+doctor adds their notes to the same chart. Similarly, DocState contains:
+
+- raw_text: Original document content
+- doc_type: "prescription", "lab_report", etc.
+- extracted_data: Structured data pulled from document
+- validation_flags: List of errors or warnings
+- redacted_text: Document with PII removed
+- trace_log: History of what each agent did
+- repair_attempts: How many times we tried fixing errors
+
+Each agent updates this shared state.
+
+
+Q7: What LLM providers are supported?
+--------------------------------------
+A: The system supports three LLM providers:
+1. AWS BEDROCK (Claude 3 Haiku, Claude 3 Sonnet, Amazon Titan)
+2. GROQ (Llama 3 models - fastest inference)
+3. OLLAMA (Local models for complete privacy)
+
+EXPLANATION:
+LLMs (Large Language Models) are the AI "brains" that power each agent.
+- Bedrock: AWS cloud service, enterprise-grade, paid
+- Groq: Super-fast inference (great for production speed)
+- Ollama: Runs locally on your machine (no data leaves your computer)
+
+You can switch between them based on your needs (speed vs cost vs privacy).
+
+
+Q8: What is a "checkpoint" in LangGraph?
+-----------------------------------------
+A: Checkpoints are save points in the workflow that allow you to pause 
+execution, inspect the state, and resume later - essential for human-in-the-loop.
+
+EXPLANATION:
+Like saving your game progress in a video game:
+1. Agent finishes processing
+2. State is saved to checkpoint
+3. System can pause and wait for human review
+4. Human approves/rejects/modifies
+5. Workflow resumes from checkpoint with human's decision
+
+Example: After the repair agent fixes dosage units, a checkpoint lets a 
+pharmacist review the change before finalizing.
+
+
+===============================================================================
+SECTION 3: AGENTS IN DETAIL
+===============================================================================
+
+Q9: What does the Classifier Agent do?
+---------------------------------------
+A: The Classifier Agent analyzes the raw document text and categorizes it 
+into one of four types: prescription, lab_report, invoice, or other.
+
+EXPLANATION:
+The classifier is the first agent. It reads clues in the document:
+- Sees "Rx", "DEA", "Dosage" → Classifies as PRESCRIPTION
+- Sees "Pathologist", "Test Results", "Reference Range" → LAB_REPORT
+- Sees "Invoice Number", "Bill To" → INVOICE
+- None of the above → OTHER
+
+This classification determines which validation rules apply later.
+
+IMPLEMENTATION:
+File: app/agents/classifier.py
+Uses: LLM prompt with examples of each document type
+Output: Updates state.doc_type field
+
+
+Q10: What does the Extractor Agent do?
+---------------------------------------
+A: The Extractor Agent parses structured data from documents like prescriptions 
+and lab reports, converting unstructured text into JSON format.
+
+EXPLANATION:
+Imagine reading a prescription and filling out a form:
+
+INPUT (raw text):
+"Dr. Smith, DEA: AB1234563. Patient John Doe. Rx: Amoxicillin 500mg, 3x daily"
+
+OUTPUT (structured JSON):
+{
+  "doctor_name": "Dr. Smith",
+  "doctor_dea": "AB1234563",
+  "patient_name": "John Doe",
+  "medications": [{
+    "name": "Amoxicillin",
+    "dosage": "500mg",
+    "frequency": "3x daily"
+  }]
+}
+
+This makes validation and data processing much easier.
+
+
+Q11: What does the Validator Agent do?
+---------------------------------------
+A: The Validator Agent checks extracted data against medical, legal, and 
+regulatory rules to identify errors, inconsistencies, or safety issues.
+
+EXPLANATION:
+The validator is like a medical safety inspector. It checks:
+
+PRESCRIPTIONS:
+- DEA number format (2 letters + 7 digits)
+- Extreme dosage detection (e.g., 10000mg aspirin = dangerous)
+- Required fields present (doctor name, patient name, medication)
+
+LAB REPORTS:
+- Pathologist signature present
+- Date consistency (collection date ≤ report date)
+- Critical values (e.g., glucose >300 mg/dL = emergency)
+- Missing reference ranges
+
+The validator creates "validation_flags" - a list of warnings/errors.
+
+
+Q12: What does the Repair Agent do?
+------------------------------------
+A: The Repair Agent automatically fixes common data errors found by the 
+validator, such as unit standardization or format corrections.
+
+EXPLANATION:
+Some errors are simple to fix automatically:
+
+BEFORE REPAIR:
+- "Weight: 70 kilograms" (non-standard unit)
+- "Date: 12-25-2023" (wrong format)
+
+AFTER REPAIR:
+- "Weight: 70 kg" (standardized)
+- "Date: 2023-12-25" (ISO format)
+
+The repair agent:
+1. Receives validation_flags from validator
+2. Attempts automatic fixes
+3. Sends data back to validator for re-verification
+4. Loops until data is clean or max attempts reached
+
+WORKFLOW:
+Validator → (finds errors) → Repair → (fixes) → Validator → (re-checks)
+
+
+Q13: What does the Redactor Agent do?
+--------------------------------------
+A: The Redactor Agent detects and removes Protected Health Information (PHI) 
+to ensure HIPAA compliance, replacing sensitive data with [REDACTED] markers.
+
+EXPLANATION:
+HIPAA law requires protecting 18 types of patient identifiers:
+- Names, addresses, phone numbers
+- Social Security Numbers
+- Medical record numbers
+- Email addresses
+- Any dates (except year)
+
+EXAMPLE:
+BEFORE: "Patient: John Doe, SSN: 123-45-6789, DOB: 03/15/1980"
+AFTER: "Patient: [REDACTED], SSN: [REDACTED], DOB: [REDACTED]/[REDACTED]/1980"
+
+The redactor uses a 2-phase approach:
+Phase 1: LLM detects all PHI in document
+Phase 2: Automated redaction with verification
+
+
+Q14: What does the Reporter Agent do?
+--------------------------------------
+A: The Reporter Agent generates a comprehensive summary of the entire 
+processing pipeline including extracted data, validation results, repairs 
+made, and PII redaction metrics.
+
+EXPLANATION:
+The reporter is like a project manager creating a final report:
+
+REPORT INCLUDES:
+- Document type and classification confidence
+- Extracted data (structured JSON)
+- Validation flags and severity levels
+- Repairs attempted and success rate
+- PII entities detected and redacted
+- Processing time and performance metrics
+- Trace log of all agent decisions
+
+This report is saved as JSON for auditing and compliance.
+
+
+===============================================================================
+SECTION 4: WORKFLOW & ROUTING
+===============================================================================
+
+Q15: How does the routing work in the pipeline?
+------------------------------------------------
+A: Routing is conditional logic that determines which agent executes next 
+based on the current state of the document.
+
+EXPLANATION:
+The pipeline has two main routing decisions:
+
+ROUTING 1 (After Classifier):
+- IF doc_type = "prescription" OR "lab_report" → EXTRACTOR
+- ELSE → REDACTOR (skip extraction for invoices/IDs)
+
+ROUTING 2 (After Validator):
+- IF validation_flags contains fixable errors → REPAIR
+- ELSE → REDACTOR (data is clean, proceed)
+
+This is defined in app/graph.py using add_conditional_edges().
+
+CODE EXAMPLE:
+workflow.add_conditional_edges("validator", should_repair, {
+    "repair": "repair",
+    "redactor": "redactor"
+})
+
+
+Q16: What is the repair loop and how does it work?
+---------------------------------------------------
+A: The repair loop is a cycle between the validator and repair agents that 
+continues until data is fixed or maximum attempts are reached.
+
+EXPLANATION:
+Flow diagram:
+1. Validator finds 3 errors
+2. Routes to Repair agent
+3. Repair fixes 2 errors
+4. Routes back to Validator
+5. Validator finds 1 remaining error
+6. Routes to Repair again
+7. Repair fixes last error
+8. Routes back to Validator
+9. Validator finds 0 errors
+10. Routes to Redactor (exit loop)
+
+SAFETY LIMIT:
+state.repair_attempts prevents infinite loops (usually max 3 attempts).
+
+
+Q17: What happens to documents classified as "other"?
+------------------------------------------------------
+A: Documents classified as "other" (invoices, ID cards, unknown types) skip 
+the extraction and validation steps and go directly to redaction.
+
+EXPLANATION:
+The pipeline only performs deep extraction and medical validation on 
+prescriptions and lab reports because they have structured medical data.
+
+WORKFLOW FOR "OTHER":
+Classifier → (identifies as "other") → Redactor → Reporter → END
+
+This saves processing time and LLM costs for documents that don't need 
+medical validation.
+
+
+===============================================================================
+SECTION 5: VALIDATION RULES
+===============================================================================
+
+Q18: What is DEA number validation?
+------------------------------------
+A: DEA (Drug Enforcement Administration) number validation ensures doctors 
+prescribing controlled substances have valid licenses.
+
+EXPLANATION:
+DEA format: 2 letters + 7 digits (e.g., AB1234563)
+
+VALIDATION RULES:
+1. First letter: A, B, F, or M (prescriber type)
+2. Second letter: First letter of doctor's last name
+3. 7 digits with checksum validation
+
+CHECKSUM ALGORITHM:
+- Add 1st, 3rd, 5th digits
+- Add 2nd, 4th, 6th digits and multiply by 2
+- Sum should end with same digit as 7th digit
+
+EXAMPLE: AB1234563
+- 1+3+5 = 9
+- (2+4+6) × 2 = 24
+- 9 + 24 = 33 (ends in 3, matches 7th digit ✓)
+
+
+Q19: What is extreme dosage detection?
+---------------------------------------
+A: Extreme dosage detection flags medications with dangerously high or low 
+amounts that could harm patients.
+
+EXPLANATION:
+The validator checks if dosages fall outside safe ranges:
+
+EXAMPLES:
+- Aspirin: Normal = 81-325mg, Extreme > 1000mg
+- Insulin: Normal = 10-50 units, Extreme > 100 units
+- Pediatric doses: Extra scrutiny for children
+
+FLAGGING LEVELS:
+- WARNING: 2x normal dose
+- CRITICAL: 5x normal dose or potentially lethal
+
+This prevents AI hallucinations like "Aspirin 10000mg" from reaching patients.
+
+
+Q20: What is pathologist signature validation?
+-----------------------------------------------
+A: Lab reports legally require a pathologist's signature to be valid. The 
+validator checks for phrases like "Reviewed by Dr. [Name]" or "Signed by".
+
+EXPLANATION:
+Medical labs must have a licensed pathologist review and sign off on results 
+before they're released to patients. The validator searches for:
+
+VALID SIGNATURES:
+- "Pathologist: Dr. Smith"
+- "Reviewed by: Dr. Jane Doe, MD"
+- "Electronically signed by Dr. Johnson"
+
+MISSING SIGNATURE → VALIDATION FLAG:
+{
+  "field": "pathologist_signature",
+  "severity": "critical",
+  "message": "Lab report missing pathologist signature"
+}
+
+
+Q21: What is date consistency checking?
+----------------------------------------
+A: Date consistency ensures collection_date ≤ report_date in lab reports 
+(you can't report results before collecting the sample).
+
+EXPLANATION:
+INVALID SCENARIO:
+- Collection Date: 2024-01-15
+- Report Date: 2024-01-10
+- Problem: Report created 5 days before sample collected (impossible!)
+
+This catches data entry errors or AI hallucinations about dates.
+
+
+===============================================================================
+SECTION 6: HIPAA COMPLIANCE & PII REDACTION
+===============================================================================
+
+Q22: What is HIPAA and why does it matter?
+-------------------------------------------
+A: HIPAA (Health Insurance Portability and Accountability Act) is a U.S. law 
+requiring protection of patient privacy. Violations can result in fines up 
+to $1.5 million per incident.
+
+EXPLANATION:
+HIPAA defines 18 types of Protected Health Information (PHI) that must be 
+safeguarded:
+1. Names
+2. Geographic subdivisions smaller than state
+3. Dates (except year)
+4. Phone numbers
+5. Email addresses
+6. Social Security Numbers
+7. Medical record numbers
+8. Account numbers
+9. License plate numbers
+10. Device identifiers
+11. URLs
+12. IP addresses
+13. Biometric identifiers
+14. Photos
+15. Certificate/license numbers
+16. Vehicle identifiers
+17. Web cookies
+18. Any other unique identifying number/code
+
+This system auto-detects and redacts all 18 types.
+
+
+Q23: How does the 2-phase redaction work?
+------------------------------------------
+A: Phase 1 uses an LLM to detect all PII in the document. Phase 2 performs 
+automated redaction with verification and calculates quality metrics.
+
+EXPLANATION:
+
+PHASE 1 - DETECTION:
+- LLM reads document
+- Identifies each PII entity with type and location
+- Creates list: [{type: "name", value: "John Doe"}, {type: "ssn", ...}]
+
+PHASE 2 - REDACTION:
+- Replace each detected PII with "[REDACTED]" or category tag
+- Verify redaction completeness
+- Calculate metrics (precision, recall)
+
+EXAMPLE:
+Original: "Patient John Doe, SSN 123-45-6789, called from 555-1234"
+Phase 1: Detects [NAME: John Doe], [SSN: 123-45-6789], [PHONE: 555-1234]
+Phase 2: "Patient [REDACTED], SSN [REDACTED], called from [REDACTED]"
+
+
+Q24: How are redaction metrics calculated without ground truth?
+----------------------------------------------------------------
+A: The system uses the LLM's detection phase as pseudo ground-truth to 
+calculate precision and recall automatically.
+
+EXPLANATION:
+Traditional metrics need human-labeled data. This system uses a clever trick:
+
+GROUND TRUTH = LLM Phase 1 detections
+PREDICTIONS = Automated redaction results
+
+PRECISION = (Correctly redacted) / (Total redactions)
+RECALL = (Correctly redacted) / (Total PII in document)
+
+EXAMPLE:
+- LLM detects 10 PII entities (pseudo ground truth)
+- Redactor successfully removes 9
+- Recall = 9/10 = 90%
+- Precision calculated by checking if redactions matched detected entities
+
+
+===============================================================================
+SECTION 7: HUMAN-IN-THE-LOOP
+===============================================================================
+
+Q25: What is Human-in-the-Loop (HITL) mode?
+--------------------------------------------
+A: HITL mode pauses the pipeline after automated repairs to let a human 
+review and approve/reject changes before finalizing.
+
+EXPLANATION:
+Two processing modes:
+
+FULLY AUTOMATED:
+Classifier → Extractor → Validator → Repair → Redactor → Reporter → END
+(No human intervention)
+
+HUMAN-IN-THE-LOOP:
+Classifier → Extractor → Validator → Repair → [PAUSE FOR HUMAN REVIEW]
+If approved → Redactor → Reporter → END
+If rejected → Manual fix or abort
+
+USE CASES FOR HITL:
+- High-risk medications (opioids, chemotherapy)
+- Pediatric prescriptions (extra safety)
+- Critical lab values requiring physician review
+- When AI confidence score < 0.8
+
+
+Q26: How are repair decisions tracked for human review?
+--------------------------------------------------------
+A: The system stores repair_summary in state with before/after comparisons 
+and reasoning for each fix.
+
+EXPLANATION:
+REPAIR SUMMARY STRUCTURE:
+{
+  "field": "dosage_unit",
+  "original_value": "500 milligrams",
+  "repaired_value": "500 mg",
+  "reasoning": "Standardized unit to mg per medical convention",
+  "confidence": 0.95,
+  "timestamp": "2024-01-15T10:30:00Z"
+}
+
+Human reviewer sees:
+"The AI changed '500 milligrams' to '500 mg'. Do you approve?"
+[Approve] [Reject] [Manual Override]
+
+
+===============================================================================
+SECTION 8: PERFORMANCE & OPTIMIZATION
+===============================================================================
+
+Q27: What is P95 latency and why is it important?
+--------------------------------------------------
+A: P95 latency means 95% of requests complete within a certain time (target: 
+≤3.5 seconds). It's a key performance metric for user experience.
+
+EXPLANATION:
+LATENCY DISTRIBUTION:
+- 50% of requests finish in 1.5s (median/P50)
+- 95% of requests finish in 3.5s (P95)
+- 99% of requests finish in 5.0s (P99)
+
+P95 is better than average because it accounts for slow outliers. Even if 
+average is 2s, if 10% of requests take 30s, users will complain.
+
+OPTIMIZATION STRATEGIES:
+1. LLM response limits (max 500 tokens)
+2. Caching repeated queries
+3. Parallel agent execution where possible
+4. Fast LLM provider (Groq) for speed-critical agents
+
+
+Q28: How does caching improve performance?
+-------------------------------------------
+A: Caching stores results of expensive LLM calls so identical requests don't 
+require re-computation.
+
+EXPLANATION:
+WITHOUT CACHING:
+Same prescription processed 3 times = 3 LLM calls = $0.03 + 9 seconds
+
+WITH CACHING:
+1st request: LLM call ($0.01, 3s)
+2nd request: Cache hit ($0, 0.1s)
+3rd request: Cache hit ($0, 0.1s)
+Total: $0.01 + 3.2s
+
+CACHE KEY EXAMPLE:
+hash(raw_text + agent_name + prompt_version)
+
+This is especially useful for testing and batch processing.
+
+
+Q29: What is response limiting?
+--------------------------------
+A: Response limiting restricts LLM output length (e.g., max 500 tokens) to 
+reduce latency and cost without sacrificing accuracy.
+
+EXPLANATION:
+LLMs charge by tokens (input + output). Limiting output:
+
+UNLIMITED:
+- LLM generates 2000 tokens
+- Cost: $0.02
+- Time: 6 seconds
+
+LIMITED TO 500 TOKENS:
+- LLM generates 500 tokens
+- Cost: $0.005
+- Time: 1.5 seconds
+- Accuracy: Same (medical data fits in 500 tokens)
+
+For structured extraction, 500 tokens is enough for JSON outputs.
+
+
+===============================================================================
+SECTION 9: TRACEABILITY & LOGGING
+===============================================================================
+
+Q30: What is the trace_log and why is it important?
+----------------------------------------------------
+A: trace_log is a timestamped audit trail of every agent's inputs, outputs, 
+and decisions, critical for debugging, compliance, and responsible AI.
+
+EXPLANATION:
+Each agent appends to trace_log:
+
+STRUCTURE:
+{
+  "agent": "validator",
+  "timestamp": "2024-01-15T10:30:15Z",
+  "input": {"extracted_data": {...}},
+  "output": {"validation_flags": [...]},
+  "llm_provider": "bedrock",
+  "llm_model": "claude-3-haiku",
+  "reasoning": "Detected 2 critical errors in dosage",
+  "confidence": 0.92
+}
+
+USE CASES:
+- Debugging: Why did validator flag this?
+- Compliance: FDA audit - prove AI decision was justified
+- Improvement: Analyze where agents fail most often
+
+
+Q31: How is AI confidence tracked?
+-----------------------------------
+A: Each agent outputs a confidence score (0.0-1.0) indicating certainty in 
+its decision, stored in state.confidence_score.
+
+EXPLANATION:
+CONFIDENCE LEVELS:
+- 0.9-1.0: High confidence (99% accurate)
+- 0.7-0.9: Medium confidence (trigger human review)
+- <0.7: Low confidence (require human approval)
+
+EXAMPLE:
+Classifier analyzes unclear document:
+"This looks like a prescription but formatting is unusual"
+→ Confidence: 0.72 → Triggers HITL review
+
+
+===============================================================================
+SECTION 10: TESTING & QUALITY ASSURANCE
+===============================================================================
+
+Q32: What types of tests are included?
+---------------------------------------
+A: The project includes unit tests, integration tests, and end-to-end 
+workflow tests covering all agents and edge cases.
+
+TEST FILES:
+- test_repair_workflow.py: Repair loop functionality
+- test_metrics_evaluator.py: HIPAA redaction metrics
+- test_prescription_date_validation.py: Date consistency
+- run_medical_tests.py: Medical validation rules
+
+TESTING STRATEGIES:
+1. Happy path (valid documents)
+2. Error injection (missing fields, bad formats)
+3. Edge cases (extreme dosages, pediatric patients)
+4. Performance tests (latency, throughput)
+
+
+Q33: How are medical validation rules tested?
+----------------------------------------------
+A: Medical rules are tested with synthetic data covering normal cases, edge 
+cases, and known failure modes.
+
+EXPLANATION:
+DEA VALIDATION TEST CASES:
+- Valid DEA: AB1234563 → PASS
+- Invalid checksum: AB1234567 → FAIL
+- Wrong format: A1234567 → FAIL
+- Correct format, wrong first letter: XB1234563 → FAIL
+
+EXTREME DOSAGE TESTS:
+- Normal: Aspirin 325mg → PASS
+- High but safe: Aspirin 650mg → WARNING
+- Dangerous: Aspirin 5000mg → CRITICAL
+
+
+Q34: What is the metrics evaluator?
+------------------------------------
+A: metrics_evaluator.py calculates quality metrics (accuracy, precision, 
+recall) for extraction and redaction without manual ground truth.
+
+EXPLANATION:
+EXTRACTION METRICS:
+- Field accuracy: % of required fields extracted correctly
+- Completeness: % of expected fields present
+
+REDACTION METRICS:
+- Recall: % of PII successfully removed
+- Precision: % of redactions that were actual PII
+- F1-Score: Harmonic mean of precision and recall
+
+AUTOMATED CALCULATION:
+No need for human labeling - uses LLM detections as proxy ground truth.
+
+
+===============================================================================
+SECTION 11: DEPLOYMENT & USAGE
+===============================================================================
+
+Q35: How do you run the pipeline via CLI?
+------------------------------------------
+A: Use run_cli.py to process documents from command line:
+
+COMMAND:
+python run_cli.py --file "Prescriptions/rx_001.pdf" --provider bedrock
+
+EXPLANATION:
+CLI OPTIONS:
+--file: Path to document (PDF or text)
+--provider: LLM provider (bedrock, groq, ollama)
+--model: Specific model name
+--human-in-loop: Enable HITL mode
+
+OUTPUT:
+- Prints processing steps in real-time
+- Saves JSON report to reports/ folder
+- Shows validation flags and repairs
+
+
+Q36: How do you run the pipeline via API?
+------------------------------------------
+A: Start the FastAPI server with api.py and send POST requests:
+
+START SERVER:
+python api.py
+
+SEND REQUEST:
+POST http://localhost:8000/process
+{
+  "file_path": "Prescriptions/rx_001.pdf",
+  "provider": "bedrock",
+  "stream": true
+}
+
+EXPLANATION:
+- stream=true: Server-Sent Events for real-time progress
+- stream=false: Wait for complete response
+- Returns JSON with extracted data, validation flags, redacted text
+
+
+Q37: How do you use the Streamlit UI?
+--------------------------------------
+A: Run streamlit_app.py for a web interface with file upload and real-time 
+visualization:
+
+COMMAND:
+streamlit run streamlit_app.py
+
+FEATURES:
+- Drag-and-drop file upload
+- LLM provider selection
+- Real-time progress updates
+- Visual display of validation flags
+- Download redacted documents
+- View trace logs
+
+
+===============================================================================
+SECTION 12: ADVANCED CONCEPTS
+===============================================================================
+
+Q38: What is conditional routing in LangGraph?
+-----------------------------------------------
+A: Conditional routing uses functions to determine the next agent dynamically 
+based on state, enabling different paths through the workflow.
+
+EXPLANATION:
+ROUTER FUNCTION:
+def should_repair(state: DocState):
+    if state.validation_flags and state.repair_attempts < 3:
+        return "repair"
+    return "redactor"
+
+GRAPH CONFIGURATION:
+workflow.add_conditional_edges("validator", should_repair, {
+    "repair": "repair",
+    "redactor": "redactor"
+})
+
+This creates branching logic: Validator can route to either Repair OR Redactor.
+
+
+Q39: What is state immutability and why does it matter?
+--------------------------------------------------------
+A: In LangGraph, each agent receives a copy of state and returns updates, 
+preventing race conditions in parallel processing.
+
+EXPLANATION:
+WRONG (mutable state):
+def agent(state):
+    state["extracted_data"] = {...}  # Direct mutation
+
+RIGHT (immutable updates):
+def agent(state):
+    return {"extracted_data": {...}}  # Return new values
+
+This ensures predictable behavior and enables rollback to previous checkpoints.
+
+
+Q40: How does the system handle LLM fallbacks?
+-----------------------------------------------
+A: If the primary LLM fails (rate limit, timeout, error), the system 
+automatically falls back to alternative providers.
+
+EXPLANATION:
+FALLBACK CHAIN:
+1. Try Bedrock (Claude 3 Haiku)
+2. If fails → Try Groq (Llama 3)
+3. If fails → Try Ollama (local)
+4. If fails → Return error
+
+IMPLEMENTATION:
+try:
+    response = bedrock_client.invoke(prompt)
+except Exception:
+    try:
+        response = groq_client.invoke(prompt)
+    except Exception:
+        response = ollama_client.invoke(prompt)
+
+This ensures high availability even if one provider is down.
+
+
+===============================================================================
+SECTION 13: COMMON WORKFLOWS
+===============================================================================
+
+Q41: WALKTHROUGH: Processing a prescription document
+-----------------------------------------------------
+Let's trace a complete prescription through the pipeline:
+
+INPUT DOCUMENT:
+"Dr. Sarah Johnson, MD, DEA: AB1234563
+Patient: Michael Chen, DOB: 05/12/1985
+Rx: Amoxicillin 500mg, 3 times daily for 10 days"
+
+STEP 1 - CLASSIFIER:
+- Reads text
+- Sees "Rx", "DEA" keywords
+- Classifies as: "prescription"
+
+STEP 2 - EXTRACTOR:
+- Parses structured data:
+{
+  "doctor_name": "Dr. Sarah Johnson",
+  "doctor_dea": "AB1234563",
+  "patient_name": "Michael Chen",
+  "medication": {
+    "name": "Amoxicillin",
+    "dosage": "500mg",
+    "frequency": "3 times daily",
+    "duration": "10 days"
+  }
+}
+
+STEP 3 - VALIDATOR:
+- Checks DEA: AB1234563 → Valid checksum ✓
+- Checks dosage: 500mg Amoxicillin → Normal range ✓
+- All required fields present ✓
+- No validation flags created
+
+STEP 4 - ROUTING:
+- No errors → Skip repair
+- Route to Redactor
+
+STEP 5 - REDACTOR:
+- Detects PII: "Michael Chen", "05/12/1985"
+- Redacts:
+"Dr. Sarah Johnson, MD, DEA: AB1234563
+Patient: [REDACTED], DOB: [REDACTED]
+Rx: Amoxicillin 500mg, 3 times daily for 10 days"
+
+STEP 6 - REPORTER:
+- Generates final report
+- Saves to reports/report_prescription_[timestamp].json
+- Processing complete!
+
+
+Q42: WALKTHROUGH: Repair loop scenario
+---------------------------------------
+INPUT DOCUMENT:
+"Patient glucose: 150 milligrams/deciliter"
+
+STEP 1 - EXTRACTOR:
+{
+  "test_name": "glucose",
+  "value": "150",
+  "unit": "milligrams/deciliter"
+}
+
+STEP 2 - VALIDATOR (1st attempt):
+- Detects non-standard unit "milligrams/deciliter"
+- Expected: "mg/dL"
+- Creates validation flag:
+  {
+    "field": "unit",
+    "issue": "non_standard_unit",
+    "severity": "warning"
+  }
+
+STEP 3 - ROUTING:
+- validation_flags present → Route to REPAIR
+
+STEP 4 - REPAIR AGENT:
+- Reads validation flag
+- Fixes unit: "milligrams/deciliter" → "mg/dL"
+- Updates state:
+  {
+    "test_name": "glucose",
+    "value": "150",
+    "unit": "mg/dL"
+  }
+- Increments repair_attempts = 1
+- Returns to Validator
+
+STEP 5 - VALIDATOR (2nd attempt):
+- Checks unit: "mg/dL" → Standard format ✓
+- No validation flags created
+- Route to Redactor
+
+STEP 6 - CONTINUE:
+- Redactor → Reporter → END
+
+
+===============================================================================
+SECTION 14: TROUBLESHOOTING
+===============================================================================
+
+Q43: What if the LLM rate limit is exceeded?
+---------------------------------------------
+A: The system implements exponential backoff retries and can fall back to 
+alternative LLM providers automatically.
+
+SOLUTION:
+1. Wait and retry with exponential backoff (1s, 2s, 4s, 8s)
+2. Fall back to Groq if Bedrock fails
+3. Fall back to Ollama if both cloud providers fail
+4. Return error only if all providers exhausted
+
+
+Q44: What if extraction fails to find required fields?
+-------------------------------------------------------
+A: The validator will create critical-severity flags, and the system can 
+either trigger human review or reject the document.
+
+EXAMPLE:
+Prescription missing doctor's DEA number:
+{
+  "field": "doctor_dea",
+  "severity": "critical",
+  "message": "Missing required DEA number for controlled substance"
+}
+
+OPTIONS:
+- HITL mode: Pause for human to add DEA manually
+- Auto-reject: Refuse to process incomplete prescription
+
+
+Q45: How do you debug agent decisions?
+---------------------------------------
+A: Check the trace_log in the output JSON report - it shows every agent's 
+input, output, and reasoning.
+
+DEBUGGING STEPS:
+1. Open report JSON: reports/report_prescription_[timestamp].json
+2. Find "trace_log" array
+3. Look for agent that failed
+4. Check "reasoning" field for explanation
+5. Compare "input" vs "output" to see what changed
+
+
+===============================================================================
+SECTION 15: EXTENSION & CUSTOMIZATION
+===============================================================================
+
+Q46: How do you add a new document type?
+-----------------------------------------
+A: Add detection logic in classifier.py, create extraction schema, and add 
+validation rules specific to that document type.
+
+STEPS:
+1. Update classifier.py with new keywords
+2. Create schema in app/schemas/[new_type].py
+3. Add extraction logic in extractor.py
+4. Add validation rules in validator.py
+5. Update router in graph.py if needed
+
+
+Q47: How do you add custom validation rules?
+---------------------------------------------
+A: Add new validation functions in validator.py and append to validation_flags 
+when rules are violated.
+
+EXAMPLE - Add age verification:
+def validate_age_restriction(extracted_data):
+    """Ensure patient is 18+ for this medication"""
+    dob = extracted_data.get("patient_dob")
+    age = calculate_age(dob)
+    if age < 18:
+        return {
+            "field": "patient_age",
+            "severity": "critical",
+            "message": f"Patient age {age} below minimum 18 for this drug"
+        }
+    return None
+
+
+Q48: How do you integrate a new LLM provider?
+----------------------------------------------
+A: Create a new client class following the same interface as bedrock_client.py 
+and add it to LLM selection logic.
+
+STEPS:
+1. Create app/my_llm_client.py
+2. Implement invoke() method with same signature
+3. Add provider option in run_cli.py
+4. Update agent files to support new provider
+
+
+===============================================================================
+END OF Q&A DOCUMENT
+===============================================================================
+
+For more details, see:
+- PROJECT_OVERVIEW.md: High-level architecture and business context
+- CODE_EXPLANATION.md: Detailed code walkthrough
+- AGENTS_CODE_EXPLANATION.md: Agent-specific implementation details
+- README.md: Setup and usage instructions
+
+===============================================================================

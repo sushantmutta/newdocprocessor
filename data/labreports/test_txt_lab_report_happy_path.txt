@@ -1,0 +1,17 @@
+LAB REPORT
+Lab Name: Apex Diagnostics
+Accreditation: CLIA-778812
+Pathologist Signature: Present
+Report ID: LBR-2026-0316-001
+Collection Date: 2026-03-14
+Report Date: 2026-03-15
+
+Patient: Kavita Sharma, Age 38
+
+Test Results:
+- Hemoglobin: 13.2 g/dL (Reference: 12.0 - 15.5)
+- WBC: 6.8 x10^3/uL (Reference: 4.0 - 11.0)
+- Platelets: 280 x10^3/uL (Reference: 150 - 450)
+
+Impression:
+- Values are within normal range.

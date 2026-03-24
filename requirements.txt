@@ -1,5 +1,6 @@
 # Core graph & LLM tooling
 langgraph
+langgraph-checkpoint-sqlite
 langgraph-cli[inmem]  # Includes langgraph-api for local server
 langchain
 langchain-community

@@ -1,0 +1,218 @@
+Repair Agent Improvements Changelog
+Date: 2026-03-12
+Files changed: src/core/agents/repair.py, src/core/state.py,
+               src/core/prompts.py, src/core/agents/reporter.py
+======================================================================
+
+NOTE ON TIP 1 (Post-repair re-validation loop)
+----------------------------------------------
+Already implemented in the graph as a built-in edge:
+  repair → validator (src/core/graph.py line: workflow.add_edge("repair", "validator"))
+The graph already loops back after every repair attempt. No code change needed.
+
+======================================================================
+CHANGES MADE
+======================================================================
+
+FILE 1: src/core/state.py
+--------------------------
+Added two new optional fields to DocState:
+
+  repair_flag_attempts: Optional[dict]
+    Maps flag code → attempt count for per-flag tracking.
+    e.g. {"NON_STANDARD_UNIT": 2, "INVALID_DATE_FORMAT": 1}
+
+  repair_outcomes: Optional[List[dict]]
+    One entry per repaired flag, containing:
+      - code:       flag type that was repaired
+      - field:      name of the field that was modified
+      - attempt:    which attempt number this was
+      - confidence: LLM confidence score for this repair
+      - reasoning:  brief explanation (first 200 chars)
+      - status:     "applied" or "error"
+
+----------------------------------------------------------------------
+
+FILE 2: src/core/agents/repair.py
+-----------------------------------
+Complete rewrite. Changes by tip number:
+
+TIP 2 — Field-level surgical merge (protect unchanged fields)
+  Before:
+    state["extracted_data"] = repaired_data   # replaced entire dict
+  After:
+    merged = dict(extracted_data)             # start from original
+    merged.update(repaired_fields)            # apply only what LLM changed
+    state["extracted_data"] = merged
+  Fields present in the original but absent from LLM response are preserved.
+
+TIP 3 — Per-flag attempt tracking
+  Before:
+    repair_attempts: int  (global counter, one limit for all flags)
+  After:
+    flag_attempts: dict   (per-flag counter, each flag gets 3 tries)
+  New constant: MAX_ATTEMPTS_PER_FLAG = 3
+  How it works: flag_attempts["NON_STANDARD_UNIT"] increments each time
+  that specific flag is repaired. A different flag type still has its
+  full 3 attempts remaining.
+  Legacy repair_attempts kept in sync for backward compatibility.
+
+TIP 4 — Extended trigger scope
+  Before:
+    REPAIRABLE_FLAGS = {"NON_STANDARD_UNIT", "INVALID_DOSAGE_UNIT"}  (2 codes)
+  After:
+    REPAIRABLE_FLAGS = {
+        "NON_STANDARD_UNIT",
+        "INVALID_DOSAGE_UNIT",
+        "MISSING_REQUIRED_FIELD",  ← LLM infers from raw text context
+        "INVALID_DATE_FORMAT",     ← normalise to ISO 8601 (YYYY-MM-DD)
+        "INCONSISTENT_DOSAGE",     ← cross-check dose vs drug name
+        "AMBIGUOUS_VALUE",         ← LLM resolves ambiguity from context
+    }
+  should_repair() also updated to use REPAIRABLE_FLAGS set.
+
+TIP 5 — Unchanged field protection
+  Same as Tip 2 — handled by dict.update() merge strategy.
+  Fields the LLM didn't touch are carried forward from the original.
+
+TIP 6 — Focused context window
+  Before:
+    raw_text[:2000]   ← blind truncation of first 2000 chars
+  After:
+    _focused_context_window(raw_text, first_flag_value, window=500)
+    ↳ finds the flagged value in raw_text using regex search
+    ↳ extracts ±500 chars around it
+    ↳ falls back to raw_text[:2000] if value not found
+  The LLM now sees the relevant section of a long document, not the header.
+
+TIP 7 — Robust JSON extraction
+  Before:
+    Sequential: try ```json ... try ``` ... try rfind("{")
+    Risk: rfind("{") could grab a small inline dict instead of the full payload
+  After:
+    _extract_largest_json(text):
+      Iterates over all "{" positions, attempts JSONDecoder().raw_decode()
+      Keeps the longest successfully parsed dict found
+    This always returns the outermost complete JSON object, no matter how the
+    LLM formats the response.
+
+TIP 8 — Confidence scoring
+  New: LLM asked to include "confidence" key (0.0–1.0) in output
+  LOW_CONFIDENCE_THRESHOLD = 0.6
+  If confidence < 0.6:
+    - state["errors"] gets a warning message flagging it for HITL
+    - Terminal prints "⚠️  Low-confidence repair (0.xx) — flagged for HITL"
+  confidence also recorded in trace_log and repair_outcomes per flag.
+
+TIP 9 — Structured JSON output (reasoning inside schema)
+  Before:
+    LLM returned flat extracted_data + "Corrected Data:" text prefix
+    reasoning = response_text.split("Corrected Data:")[0]  ← brittle string split
+  After:
+    LLM instructed to return:
+      {
+        "reasoning": "one or two sentence explanation",
+        "confidence": 0.95,
+        "data": { ...complete corrected extracted_data... }
+      }
+    Parsing: parsed["data"] = repaired fields, parsed["reasoning"] = explanation
+    Legacy fallback: if "data" key absent, treat entire parsed object as repaired_data
+    with confidence defaulting to 0.7.
+
+TIP 10 — Repair outcomes tracked for reporter
+  New list state["repair_outcomes"] built in repair_data():
+    [{"code": ..., "field": ..., "attempt": ..., "confidence": ...,
+      "reasoning": ..., "status": "applied"}, ...]
+  Used in reporter.py to compute three new CSV columns (see below).
+
+----------------------------------------------------------------------
+
+FILE 3: src/core/prompts.py
+----------------------------
+Updated REPAIR_SYSTEM_PROMPT:
+  Old: one-liner text prompt
+  New: multi-line system prompt explicitly instructing the LLM to:
+    - Return ONLY a JSON object (no markdown fences, no preamble)
+    - Use exactly three keys: "reasoning", "confidence", "data"
+    - Never add text before or after the JSON
+
+Updated REPAIR_PROMPT:
+  Old: unit-error-only prompt with "Corrected Data:" text prefix requested
+  New: covers all 5 flag types with per-type repair instructions:
+    - NON_STANDARD_UNIT / INVALID_DOSAGE_UNIT: unit conversion table
+    - MISSING_REQUIRED_FIELD: infer from context, use null if absent
+    - INVALID_DATE_FORMAT: normalise to YYYY-MM-DD
+    - INCONSISTENT_DOSAGE: cross-check against drug name / route
+    - AMBIGUOUS_VALUE: resolve using document context
+  Removed dependency on "Corrected Data:" string in response.
+  Output format section updated to match structured JSON schema.
+
+----------------------------------------------------------------------
+
+FILE 4: src/core/agents/reporter.py
+-------------------------------------
+Added three new columns to metrics_report.csv (TIP 10):
+
+  repair_success_rate
+    Percentage of repair_outcomes entries with status="applied".
+    "N/A" when no repair was attempted.
+
+  repair_flag_types
+    Pipe-separated list of flag codes that triggered repair.
+    e.g. "INVALID_DATE_FORMAT|NON_STANDARD_UNIT"
+    "N/A" when no repair was attempted.
+
+  repair_max_attempts_hit
+    Boolean (True/False) — True if any flag code reached MAX_ATTEMPTS_PER_FLAG (3).
+    Ops teams can filter on this to find stuck documents needing manual review.
+
+New code block added before the CSV write:
+  repair_outcomes = state.get("repair_outcomes") or []
+  repair_success_rate = (resolved / total) * 100 or None
+  repair_flag_types_str = pipe-joined sorted flag code set
+  repair_max_hit = any(v >= 3 for v in flag_attempts.values())
+
+======================================================================
+TEST INPUT FILES CREATED
+======================================================================
+
+data/prescriptions/test_repair_unit_errors.txt
+  Prescription with 5 medications using NON_STANDARD_UNIT errors:
+    - Metformin 500 liters      → expect: 500 mg
+    - Amlodipine 5 kg           → expect: 5 mg
+    - Atorvastatin 10 cm        → expect: 10 mg
+    - Aspirin 75 l              → expect: 75 mg
+    - Vitamin D3 60000 kgs      → expect: 60000 iu (or IU)
+
+data/prescriptions/test_repair_missing_fields.txt
+  Prescription with MISSING_REQUIRED_FIELD triggers:
+    - No date field (should be inferred as null or approximate)
+    - No doctor name (only stamp with clinic name)
+
+data/prescriptions/test_repair_date_inconsistency.txt
+  Prescription with INVALID_DATE_FORMAT and INCONSISTENT_DOSAGE triggers:
+    - Dates in DD/MM/YYYY and DD-MM-YYYY format instead of YYYY-MM-DD
+    - Unit inconsistency in clinical notes ("40 liters" vs "40 mg")
+
+HOW TO TEST
+-----------
+1.  Start the API:   python scripts/run.py  (or just python -m uvicorn src.api.main:api)
+2.  Open http://127.0.0.1:8000/docs
+3.  POST /process with the text from any test file pasted into the raw_text field
+    or upload via the Streamlit UI at http://localhost:8501
+4.  Check terminal output for:
+    --- 🔧 Agent: Repair (groq) ---
+    (means repair was triggered)
+5.  Check data/reports/metrics_report.csv for the new columns:
+    repair_success_rate, repair_flag_types, repair_max_attempts_hit
+
+======================================================================
+VALIDATION
+======================================================================
+Commands run after all changes:
+  python -c "from src.core.agents.repair import repair_data, should_repair, REPAIRABLE_FLAGS, _extract_largest_json, _focused_context_window; print('repair.py imports OK'); print('REPAIRABLE_FLAGS:', REPAIRABLE_FLAGS)"
+  Output: repair.py imports OK
+          REPAIRABLE_FLAGS: {'INCONSISTENT_DOSAGE', 'MISSING_REQUIRED_FIELD', 'INVALID_DATE_FORMAT', 'INVALID_DOSAGE_UNIT', 'NON_STANDARD_UNIT', 'AMBIGUOUS_VALUE'}
+
+  python -c "from src.core.agents.reporter import generate_report; from src.core.state import DocState; print('reporter.py and state.py imports OK')"
+  Output: reporter.py and state.py imports OK

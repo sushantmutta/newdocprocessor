@@ -1,0 +1,16 @@
+ACME LOGISTICS - MONTHLY FREIGHT INVOICE
+Invoice ID: INV-2026-03-15091
+Date: 2026-03-14
+Vendor: ACME Logistics Pvt Ltd
+Bill To: North Valley Insurance Operations
+
+Line Items:
+1. Road freight handling charge          28500 INR
+2. Warehouse loading service             12000 INR
+3. Last-mile dispatch                    7600 INR
+
+Payment Terms: Net 30 days
+Bank: XX9918237
+
+This document is not a medical report or prescription.
+Expected HITL Trigger: doc_type == unknown -> human_review.

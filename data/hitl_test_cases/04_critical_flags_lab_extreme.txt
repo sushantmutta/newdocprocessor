@@ -1,0 +1,21 @@
+LABORATORY REPORT
+Lab Name: Dr. Lal PathLabs
+Accreditation: NABL Accredited
+Report ID: LAB998812
+Collection Date: 2026-03-10
+Report Date: 2026-03-11
+Sample Type: Serum
+Patient Name: Arvind Rao
+Patient ID: MRN892113
+Age: 58
+Gender: Male
+
+Test Results:
+1) WBC Count                45200 cells/mcL     Ref: 4000 - 11000   Status: Extreme
+2) Vitamin D                336 ng/mL           Ref: 30 - 100       Status: Extreme
+3) Triglycerides            780 mg/dL           Ref: 0 - 150        Status: Extreme
+4) HDL Cholesterol          192 mg/dL           Ref: 40 - 60        Status: Extreme
+
+Pathologist: Dr. Neha Patel
+
+Expected HITL Trigger: validation_flags include HIGH/CRITICAL severities -> human_review.

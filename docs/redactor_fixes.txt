@@ -1,0 +1,134 @@
+Redactor Agent Bug Fixes — src/core/agents/redactor.py & src/core/prompts.py
+Date: 2026-03-12
+==============================================================================
+
+ROOT CAUSE SUMMARY
+------------------
+The failure "⚠️  Failed to redact: SIGNATURE = 'Dr. Dr. Amit Patel...'" was caused
+by three compounding problems:
+
+  1. The LLM hallucinated a duplicate title prefix ("Dr. Dr.") that does not exist
+     in the original document — so no string matching strategy could find it.
+  2. Strategy 2 (flexible name matching) only ran for type=NAME. SIGNATURE was
+     silently skipped to Strategy 3, which also uses the hallucinated string verbatim.
+  3. The SIGNATURE prompt category was described as "Signature markers, handwritten
+     notations", causing the LLM to classify a printed doctor name in a signature
+     block as SIGNATURE instead of NAME — bypassing all name-aware matching logic.
+
+No fallback (Strategy 4) existed to recover from any of these failures.
+
+==============================================================================
+FILES CHANGED
+==============================================================================
+
+FILE 1: src/core/agents/redactor.py
+------------------------------------
+
+CHANGE 1 — Added _NAME_LIKE_TYPES set (module level)
+  A frozenset of PII type strings that should receive name-aware matching:
+    _NAME_LIKE_TYPES = {"NAME", "SIGNATURE", "PRINTED_NAME", "PROVIDER_NAME"}
+  This is the canonical list checked by Strategy 2 and Strategy 4.
+
+CHANGE 2 — Added _normalize_pii_value() helper function (module level)
+  Purpose: Collapse duplicate title hallucinations from the LLM before any
+  matching is attempted.
+  Logic:
+    - Regex collapses "Dr. Dr." / "Mr. Mr." / "Ms. Ms." etc. → single title
+    - Collapses any internal double-whitespace → single space
+    - Strips leading/trailing whitespace
+  Example: "Dr. Dr. Amit Patel" → "Dr. Amit Patel"
+
+CHANGE 3 — Applied normalization in matching loop
+  Before (original):
+    pii_value = str(pii_entity.get("value", "")).strip()
+  After (fixed):
+    pii_value = _normalize_pii_value(str(pii_entity.get("value", "")).strip())
+  All four strategies now operate on the cleaned value.
+
+CHANGE 4 — Strategy 2 extended to all NAME_LIKE_TYPES (was NAME only)
+  Before:
+    if pii_type == "NAME" and not successfully_redacted:
+        name_variants = [ pii_value,
+                          pii_value.replace("Dr. ", "").replace("Dr.", "").strip(),
+                          f"Dr. {pii_value}" if not pii_value.startswith("Dr") else pii_value ]
+  After:
+    if pii_type in _NAME_LIKE_TYPES and not successfully_redacted:
+        name_variants = [
+            pii_value,
+            # strip any leading title prefix entirely
+            re.sub(r"^(Dr|Mr|Mrs|Ms|Prof|Mx)\.?\s+", "", pii_value, flags=re.IGNORECASE).strip(),
+            # strip trailing credential suffix (MD, MBBS, PhD, etc.)
+            re.sub(r",?\s+(MD|MBBS|MS|PhD|DO|DPM|FRCR|FRCS)$", "", pii_value, flags=re.IGNORECASE).strip(),
+            # normalise title to "Dr." prefix
+            re.sub(r"^(Dr|Mr|Mrs|Ms|Prof|Mx)\.?\s+", "Dr. ", pii_value, flags=re.IGNORECASE).strip(),
+        ]
+        # Deduplicate while preserving order (dict.fromkeys trick)
+        for variant in dict.fromkeys(v for v in name_variants if v): ...
+  This ensures SIGNATURE entities now go through the same title-stripping logic
+  as NAME entities.
+
+CHANGE 5 — Added Strategy 4: Significant-token sequence matching
+  Placed after Strategy 3. Extracts all alphabetic tokens of length ≥ 3 from the
+  PII value and builds a regex that allows arbitrary non-alphabetic characters
+  between them. This catches cases where the LLM appended/prepended extra tokens
+  (credentials, duplicate titles) but the core name tokens are present in the doc.
+  Pattern join: r"[\w.\-\s]*?" between each token
+  Example: tokens ["Dr", "Amit", "Patel"] → "Dr[\w.\-\s]*?Amit[\w.\-\s]*?Patel"
+
+CHANGE 6 — Improved failure log message
+  Before:
+    print(f"  ⚠️  Failed to redact: {pii_type} = '{pii_value[:50]}...'")
+    (always appended "..." even for short values)
+  After:
+    display_value = pii_value[:80] + ("..." if len(pii_value) > 80 else "")
+    print(f"  ⚠️  Failed to redact: {pii_type} = '{display_value}'")
+
+FILE 2: src/core/prompts.py
+----------------------------
+
+CHANGE 7 — Clarified SIGNATURE category description
+  Before:
+    16. **SIGNATURE**: Signature markers, handwritten notations
+  After:
+    16. **SIGNATURE**: Physical handwritten signature images or markers ONLY.
+        NOTE: If it is a printed name in a signature block (e.g., "Dr. Amit Patel, MD"),
+        classify it as **NAME** with category "signature_name" — NOT as SIGNATURE.
+  This prevents the LLM from misclassifying printed doctor names as SIGNATURE,
+  which bypassed the name-aware matching logic entirely.
+
+CHANGE 8 — Added Rule 7: No title duplication in CRITICAL EXTRACTION RULES
+  Added after Rule 6 ("NO ASSUMPTIONS"):
+    7. **NO TITLE DUPLICATION**: Never include a title (Dr., Mr., Mrs., Ms.) more than once.
+       - Correct: "Dr. Amit Patel"       ← one title prefix
+       - WRONG:   "Dr. Dr. Amit Patel"   ← duplicate title, never do this
+  This prevents the LLM from generating values that cannot be matched against
+  the original document text.
+
+==============================================================================
+VALIDATION
+==============================================================================
+
+Command run after all changes:
+  python -c "from src.core.agents.redactor import redact_pii, _normalize_pii_value, _NAME_LIKE_TYPES; \
+             print('redactor.py imports OK'); \
+             print('NAME_LIKE_TYPES:', _NAME_LIKE_TYPES); \
+             print('normalize test:', _normalize_pii_value('Dr. Dr. Amit Patel'))"
+
+Output:
+  redactor.py imports OK
+  NAME_LIKE_TYPES: {'PRINTED_NAME', 'PROVIDER_NAME', 'NAME', 'SIGNATURE'}
+  normalize test: Dr. Amit Patel
+
+==============================================================================
+EXPECTED OUTCOME AFTER FIX
+==============================================================================
+
+The "Dr. Dr. Amit Patel" failure chain is broken at two independent layers:
+  - Layer 1 (prompts.py): LLM told not to duplicate titles → should not produce
+    "Dr. Dr." in the first place.
+  - Layer 2 (_normalize_pii_value): Even if LLM still hallucinates the duplicate,
+    it is normalized to "Dr. Amit Patel" before any matching occurs.
+  - Layer 3 (Strategy 2 extended): SIGNATURE now goes through title variants just
+    like NAME — a bare name match or title-stripped match will succeed.
+  - Layer 4 (Strategy 4): Token-sequence fallback catches any remaining edge cases
+    where the LLM value differs in minor ways from the document text.

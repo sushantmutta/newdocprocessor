@@ -1,0 +1,126 @@
+Slide 1: Project Title and Context
+Agentic AI Document Processor for Medical Workflows
+
+- Domain: Prescription and lab report processing in healthcare/insurance operations.
+- Core challenge: Convert unstructured medical documents into safe, auditable, structured outputs.
+- Constraints: Clinical risk, data quality variance, PHI/PII protection, and human oversight requirements.
+- Tech direction: Multi-agent LangGraph pipeline with HITL, repair loops, knowledge checks, and traceability.
+
+
+Slide 2: Problem Statement
+
+- Manual review of medical documents is slow, expensive, and inconsistent.
+- LLM-only extraction can miss schema constraints, clinical red flags, or unit mismatches.
+- In-memory workflows lose pending review state on restart, making operations brittle.
+- Teams need review queues, escalation, audit logs, and deterministic routing for production use.
+- Regulatory and trust requirements demand explainable decisions and complete trace history.
+
+
+Slide 3: Our Solution
+
+- Built a multi-agent document intelligence pipeline using LangGraph.
+- Introduced a deterministic supervisor for stage-wise routing and safety gating.
+- Added Human-in-the-Loop interrupts with persistent SQLite checkpointing.
+- Added feature-flagged knowledge-base lookup for curated medical consistency checks.
+- Implemented a robust repair agent for structured correction with confidence-aware behavior.
+- Added API-level trace and audit persistence for observability and compliance readiness.
+
+
+Slide 4: High-Level Architecture
+
+- Input layer: Upload APIs for PDF/TXT document ingestion.
+- Orchestration layer: initialize -> supervisor gates -> extractor/validator/repair/redactor/reporter.
+- Control layer: Supervisor routes to repair, human_review, redactor, or abort.
+- HITL layer: human_review interrupt, decision APIs, timeout worker, escalation flow.
+- Knowledge layer: Curated JSON/CSV exact-match lookup for drugs/lab tests.
+- Persistence layer: SQLite for checkpoints, review queue, trace events, human audit decisions.
+- Output layer: Validated structured data, redacted text, reports, trace records.
+
+
+Slide 5: Critical Code Snippet 1 (Workflow + HITL Persistence)
+
+# src/core/graph.py
+_checkpointer_ctx = SqliteSaver.from_conn_string(str(reviews_db_path))
+checkpointer = _checkpointer_ctx.__enter__()
+
+app_with_review = workflow.compile(
+    checkpointer=checkpointer,
+    interrupt_after=["human_review"],
+    interrupt_before=["repair"] if settings.processing.interrupt_before_repair else [],
+)
+
+- Why critical: Moves from volatile in-memory flow to persistent operational workflow.
+- Result: Pending reviews survive restarts and can be resumed by thread_id.
+
+
+Slide 6: Critical Code Snippet 2 (Supervisor Safety Routing)
+
+# src/core/agents/supervisor.py
+elif bool(state.get("knowledge_conflicts")):
+    _mark_review(state, "knowledge conflicts detected", "post_validator")
+elif _has_high_or_critical_flags(state):
+    _mark_review(state, "critical validation flags", "post_validator")
+elif _repair_limit_exceeded(state):
+    _mark_review(state, "repair limit exceeded", "post_validator")
+elif _has_repairable_flags_with_attempts_left(state):
+    _set_decision(state, "repair", "repairable flags present", "post_validator")
+else:
+    _set_decision(state, "redactor", "no repair needed", "post_validator")
+
+- Why critical: Deterministic, explainable decisions reduce silent failures.
+- Result: Safety-first routing with explicit escalation to humans when risk is high.
+
+
+Slide 7: Critical Code Snippet 3 (Knowledge + Repair Robustness)
+
+# src/core/agents/knowledge_agent.py
+if expected_units and unit and unit not in expected_units:
+    conflicts.append({
+        "code": "KNOWLEDGE_MISMATCH",
+        "severity": "HIGH",
+        "field": f"test_results[{idx}].unit",
+    })
+
+# src/core/agents/repair.py
+parsed = _extract_largest_json(response_text)   # robust JSON extraction
+if confidence < LOW_CONFIDENCE_THRESHOLD:
+    state["errors"].append("Repair confidence low - flagged for human review")
+
+- Why critical: Combines curated medical checks with resilient AI-repair handling.
+- Result: Higher reliability and fewer unsafe auto-corrections.
+
+
+Slide 8: Evaluation, Performance, and Logging
+
+- Testing coverage includes orchestration, HITL APIs, knowledge store/agent, and edge-case matrix tests.
+- Validation outcome in recent run: 46 passed, 0 failed.
+- Latency tracking included per request (latency_ms) and configurable P95 threshold.
+- End-to-end trace persistence via agent_trace_events.
+- Human action audit persistence via human_decisions_audit.
+- Queue operational visibility via review_queue and /review/pending.
+
+
+Slide 9: Salient Features and Project Impact
+
+Feature highlights:
+- Deterministic supervisor orchestration.
+- Persistent HITL with decision actions (approve, reject, override, re_extract, escalate).
+- Knowledge-conflict-driven review triggers.
+- Confidence-aware repair with per-flag retry control.
+- Responsible AI audit logs and correlation-aware tracing.
+
+Business/clinical impact:
+- Faster triage and reduced manual review burden.
+- Better safety guardrails for high-risk outputs.
+- Improved compliance posture with auditability.
+- Operational resilience with restart-safe review handling.
+
+
+Slide 10: Future Scope
+
+- Add semantic knowledge retrieval beyond exact match (ontology + synonym expansion).
+- Introduce policy-driven routing by payer/provider/regional compliance.
+- Add active learning from reviewer decisions to improve extraction/repair prompts.
+- Build reviewer dashboard with SLA alerts and workload balancing.
+- Extend to additional document classes (discharge summaries, claims forms, radiology reports).
+- Integrate stronger risk scoring and automated governance reports.

@@ -1,0 +1,16 @@
+PRESCRIPTION
+Date: 2026-03-16
+Doctor: Dr. Anita Verma, MD-99102
+Patient: Meera Joshi, Age 45
+Diagnosis: Hypertension
+
+Medications:
+1) Amlodipine 5 mg, oral, once daily
+2) Metformin 500 mg, oral, twice daily after meals
+
+Clinical Instructions:
+- Check blood pressure daily at home.
+- Follow up after 30 days.
+
+Allergies:
+- None reported

@@ -1,0 +1,16 @@
+PRESCRIPTION
+Date: 2026-03-16
+Doctor: Dr. Vivek Rao, MD-22017
+Patient: Sohan Mehta, Age 68
+Diagnosis: Diabetes Mellitus Type 2
+
+Medications:
+1) Metformin 5000 mg, oral, twice daily
+2) Aspirin 81 mg, oral, once daily
+
+Clinical Instructions:
+- Monitor glucose and report dizziness immediately.
+- Repeat HbA1c in 6 weeks.
+
+Notes:
+- This file is intended to trigger validation/knowledge conflict checks.

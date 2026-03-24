@@ -1,0 +1,23 @@
+LABORATORY REPORT
+Lab Name: Metro Diagnostic Center
+Report ID: LAB-INVALID-TYPE
+Collection Date: not-a-date
+Report Date: 2026-02-31
+Sample Type: Serum
+
+Test Results:
+- Test Name: WBC Count
+  Value: not_numeric
+  Unit: cells/mcL
+  Reference Range: 4000 - 11000
+  Status: Normal
+
+- Test Name: CRP
+  Value: 14.2
+  Unit: mg/L
+  Reference Range: 0 - 5
+  Status: High
+
+Pathologist: N/A
+
+Expected HITL Trigger: schema_validation_failed == True (validator catches parse/type/date issues).

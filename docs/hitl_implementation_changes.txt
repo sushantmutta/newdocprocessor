@@ -1,0 +1,134 @@
+HITL Implementation Changes
+===========================
+Date: 2026-03-15
+
+Overview
+--------
+Implemented production-grade HITL architecture with centralized review gating,
+SQLite-backed checkpointing, pending-review queue APIs, human decision actions,
+timeout escalation worker, and LLM fallback awareness.
+
+Important Note on Node Path
+---------------------------
+Requested path was src/core/graph/nodes/*.py.
+To avoid import collisions with existing module src/core/graph.py, nodes were added under:
+- src/core/graph_nodes/
+This preserves current import stability while providing the same node behavior.
+
+Files Added
+-----------
+1) src/core/graph_nodes/__init__.py
+   - Package marker for HITL graph helper nodes.
+
+2) src/core/graph_nodes/confidence_gate.py
+   - confidence_gate_node(state):
+     - Routes low-confidence extractions to human review.
+     - Sets review_required, review_reason, review_deadline, paused_since.
+   - confidence_gate_router(state): returns human_review or validator.
+
+3) src/core/graph_nodes/review_gate.py
+   - review_gate_node(state): central risk trigger evaluation.
+   - review_gate_router(state): returns human_review or continue.
+   - human_review_node(state): review payload assembly before interrupt.
+   - human_review_router(state): supports approve/reject/override/re_extract routing.
+
+4) src/core/utils/review_merge.py
+   - merge_override(original, repaired, human_patch): partial override merge utility.
+
+5) src/core/utils/review_audit.py
+   - append_human_audit_log(...): normalized human audit entries in responsible_ai_log.
+
+Files Updated
+-------------
+1) config/settings.py
+   - Added HITL settings:
+     - review_timeout_hours
+     - interrupt_before_repair
+     - timeout_action
+     - review_poll_interval_seconds
+     - reviews_db_path
+   - Ensures DB parent directory creation.
+   - Added get_reviews_db_path().
+
+2) src/core/state.py
+   - Extended DocState with production HITL fields:
+     - review_reason: List[str]
+     - review_deadline, escalated, reviewer_id, reviewer_notes
+     - schema_validation_failed, validation_error_message
+     - extraction_empty, llm_fallback_used, paused_since
+     - human_decision, modified_data, hint_prompt
+     - original_data, responsible_ai_log
+
+3) src/core/clients/llm_client.py
+   - Added fallback tracking:
+     - self.last_fallback_used
+     - fallback_was_used()
+   - invoke_with_fallback now marks fallback usage per invocation.
+
+4) src/core/agents/classifier.py
+   - Captures llm_fallback_used signal into state.
+
+5) src/core/agents/extractor.py
+   - Supports re-extraction hint via state.hint_prompt.
+   - Captures llm_fallback_used signal into state.
+   - Unknown doc type now skips safely (no hard error), allowing review gate handling.
+
+6) src/core/agents/repair.py
+   - Captures llm_fallback_used signal into state.
+
+7) src/core/agents/validator.py
+   - Added near-empty extraction detection helper.
+   - Sets extraction_empty.
+   - On ValidationError sets:
+     - schema_validation_failed=True
+     - review_required=True
+     - validation_error_message
+     - review_reason append
+
+8) src/core/graph.py
+   - Rewired workflow to HITL target flow:
+     initialize -> classifier -> extractor -> confidence_gate -> validator -> review_gate
+       -> human_review (interrupt) -> repair -> redactor -> reporter
+   - Added decision-based routing after human_review for re_extract/override/reject.
+   - Replaced MemorySaver with SqliteSaver checkpointer.
+   - Added interrupt_after=[human_review] and config-driven interrupt_before=[repair].
+
+9) src/api/main.py
+   - Rebuilt API for production HITL:
+     - /process
+     - /process/with-review
+     - GET /review/pending
+     - POST /review/{thread_id}/decision
+     - Backward-compatible POST /repair/approve wrapper
+   - Added review_queue SQLite metadata table management.
+   - Added decision handling:
+     - approve, reject, override, re_extract, escalate
+   - Added timeout worker loop (every configured interval) with auto_approve/escalate behavior.
+   - Added audit logging for human decisions.
+
+10) requirements.txt
+    - Added langgraph-checkpoint-sqlite
+
+Behavioral Improvements Delivered
+---------------------------------
+- Multiple HITL triggers centralized in review_gate.
+- Persistent review state via SQLite checkpointer.
+- Pending review queue endpoint available.
+- Granular human decisions and override merge supported.
+- Timeout escalation/auto-approve framework implemented.
+- LLM fallback now influences review routing.
+- Human audit trail entries recorded with reviewer metadata.
+
+Validation Performed
+--------------------
+- Static diagnostics on modified files: no errors.
+- Focused API test suite:
+  - tests/test_api_review_interrupt.py -> 2 passed.
+
+Follow-up Suggestions
+---------------------
+- Add dedicated unit tests for:
+  - review_gate trigger matrix
+  - decision endpoint branches (override/re_extract/escalate)
+  - timeout worker behavior (deadline expiry paths)
+- Add webhook/email integration for escalations (placeholder currently logged).

@@ -1,0 +1,28 @@
+[
+    {
+        "name": "amoxicillin",
+        "allowed_units": [
+            "mg",
+            "ml",
+            "tablet",
+            "capsule"
+        ],
+        "typical_range": "125-1000 mg"
+    },
+    {
+        "name": "metformin",
+        "allowed_units": [
+            "mg",
+            "tablet"
+        ],
+        "typical_range": "250-2000 mg"
+    },
+    {
+        "name": "insulin",
+        "allowed_units": [
+            "units",
+            "iu"
+        ],
+        "typical_range": "varies"
+    }
+]

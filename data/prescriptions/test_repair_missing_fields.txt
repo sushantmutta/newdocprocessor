@@ -1,0 +1,21 @@
+PRESCRIPTION
+============================
+[No date on this prescription]
+
+Patient: Sunita Verma
+Patient ID: PT55123
+DOB: 1982-06-15
+
+Diagnosis: Acute Bronchitis
+
+Medications:
+1. Azithromycin     500 mg   once daily for 5 days
+2. Ambroxol         30 mg    three times daily after food
+3. Paracetamol      650 mg   as needed (max 3 times/day)
+
+Instructions:
+- Rest and hydration recommended
+- Return if symptoms worsen after 3 days
+
+[Doctor signature present but name not printed]
+Stamp: City Health Clinic, Delhi - 110001

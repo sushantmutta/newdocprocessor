@@ -1,0 +1,30 @@
+PRESCRIPTION
+============================
+Date: 2026-03-10
+Doctor: Dr. Meera Sharma
+Clinic: Wellness Medical Center, 45 Park Street, Mumbai - 400001
+License No: MH-DOC-20482
+
+Patient: Rajesh Nair
+DOB: 1975-11-22
+Patient ID: PT93847
+Address: 12 Lotus Colony, Pune, 411001
+
+Diagnosis: Hypertension, Type 2 Diabetes
+
+Medications:
+1. Metformin        500 liters  twice daily after meals     (for blood sugar control)
+2. Amlodipine       5 kg        once daily in the morning   (for blood pressure)
+3. Atorvastatin     10 cm       once daily at bedtime       (cholesterol management)
+4. Aspirin          75 l        once daily morning          (antiplatelet)
+5. Vitamin D3       60000 kgs   once weekly                 (supplement)
+
+Instructions:
+- Monitor blood pressure daily
+- Check fasting blood sugar weekly
+- Avoid grapefruit with Atorvastatin
+- Return for follow-up in 4 weeks
+
+Dr. Meera Sharma
+MBBS, MD (Internal Medicine)
+Reg No: MH-DOC-20482
